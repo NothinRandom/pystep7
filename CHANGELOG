@@ -1,2 +1,5 @@
+v0.1.1:
+* simplify read/write by merging Area, Number, Offset into Address
+
 v0.1.0:
 * Initial commit

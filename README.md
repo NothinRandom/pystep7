@@ -410,43 +410,64 @@ with Client(host=__HOST, port=__PORT, rack=__RACK, slot=__SLOT) as plc:
 
     """
     Read area
-        example: read area memory of data block 1 with list of items
+        example: read area memory of data block 1 with no offsets using a list of items
 
     Args:
-        Area(int)[Required]
-        Number(int)[Required]
-        Offset(int)[Required]
+        Address(str)[Required]      # valid areas are
+                                    #   "PE" # inputs
+                                    #   "PA" # outputs
+                                    #   "MK" # flags
+                                    #   "DB" # data blocks
+                                    #   "DI" # DB instance
+                                    #   "CT" # counters
+                                    #   "TM" # timers
+                                    
         Elements(int)[Optional]
         ItemList(list)[Optional]
+    Notes:
+        Only data block uses block number and the rest is set to 0
+            Example: PE10.1 is not valid and will be override to PE0.1
+                     PA1.1 is not valid and will be override to PA0.1
+                     DB10.1 is valid and produces block number 10 with offset of 1
 
     Returns:
         list(Tag): list that contains parsed data
             example:
                 [
-                    Tag(name='BIT', area='DB', number=1, offset=0, value=0, size=1, type=1, error=''), 
-                    Tag(name='BYTE', area='DB', number=1, offset=1, value=1, size=1, type=2, error=''), 
-                    Tag(name='CHAR', area='DB', number=1, offset=2, value=b'a', size=2, type=3, error=''), 
-                    Tag(name='DINT', area='DB', number=1, offset=4, value=1, size=4, type=7, error=''), 
-                    Tag(name='DWORD', area='DB', number=1, offset=8, value=1, size=4, type=6, error=''), 
+                    Tag(name='BIT', address='DB1.0', value=0, size=1, type=1, error=''), 
+                    Tag(name='BYTE', address='DB1.1', value=1, size=1, type=2, error=''), 
+                    Tag(name='CHAR', address='DB1.2', value=b'a', size=2, type=3, error=''), 
+                    Tag(name='DINT', address='DB1.4', value=1, size=4, type=7, error=''), 
+                    Tag(name='DWORD', address='DB1.8', value=1, size=4, type=6, error=''), 
                     ... 
-                    Tag(name='WORD', area='DB', number=1, offset=294, value=1, size=2, type=4, error='')
+                    Tag(name='WORD', address='DB1.294', value=1, size=2, type=4, error='')
                 ]
     """
-    response = plc.read_area(Area=Area.DB_DATABLOCKS, Number=1, Offset=0, ItemList=__RTAGS1)
+    response = plc.read_area(Address="DB1.0", ItemList=__RTAGS1)
 
 
 
     """
     Write area
-        example: write area memory of data block 2 with list of items
+        example: write area memory of data block 2 with no offsets using a list of items
 
     Args:
-        Area(int)[Required]
-        Number(int)[Required]
-        Offset(int)[Required]
+        Address(str)[Required]      # valid areas are
+                                    #   "PE" # inputs
+                                    #   "PA" # outputs
+                                    #   "MK" # flags
+                                    #   "DB" # data blocks
+                                    #   "DI" # DB instance
+                                    #   "CT" # counters
+                                    #   "TM" # timers
         Elements(int)[Optional]
         ItemList(list)[Optional]
+    Notes:
+        Only data block uses block number and the rest is set to 0
+            Example: PE10.1 is not valid and will be override to PE0.1
+                     PA1.1 is not valid and will be override to PA0.1
+                     DB10.1 is valid and produces block number 10 with offset of 1
 
     """
-    plc.write_area(Area=Area.DB_DATABLOCKS, Number=2, Offset=0, ItemList=__WTAGS2)
+    plc.write_area(Address="DB2.0", ItemList=__WTAGS2)
 ```

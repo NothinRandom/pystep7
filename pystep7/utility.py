@@ -1,3 +1,4 @@
+import re
 import struct
 
 from datetime import date, datetime, timedelta
@@ -8,7 +9,50 @@ from .constants import (
     ModeSelector,
     StartupSwitch,
     SubBlockType
-)
+)    
+
+
+def GetAreaAddress(id:str) -> str:
+    """
+    Extract area type and address.
+
+    Args:
+        address(str):    memory address id (e.g. "DB1.1")
+    Returns:
+        result(tuple): (area_name, area_type, number, offset)
+    Example:
+        "DB1.1." -> ("DB", 0x84, 1, 1)
+    """
+    # extract area type
+    area_string = GetAlpha(id=id).upper()
+    area = GetAreaFromName(Name=area_string)
+    
+    # extract number and offset
+    address_number = GetNumeric(id=id)
+    number_offset = address_number.split(".")
+    if len(number_offset) != 2:
+        raise ValueError(f'Invalid number/offset "{id}"')
+
+    number = abs(int(number_offset[0]))
+    offset = abs(int(number_offset[1]))
+
+    if area != Area.DB_DATABLOCKS:
+        number = 0
+    return (area_string, area, number, offset)
+
+
+def GetAlpha(id:str) -> str:
+    letters = re.search(r"\D+", id)
+    if letters is None:
+        raise ValueError("Invalid input")
+    return letters.group(0)
+
+
+def GetNumeric(id:str) -> str:
+    numbers = re.search(r"\d.*", id)
+    if numbers is None:
+        raise ValueError("Invalid input")
+    return numbers.group(0)
 
 
 def BCDtoByte(B:int):
@@ -183,36 +227,20 @@ def SetDateTime(DT:datetime) -> bytes:
     )
 
 
-# def GetDataType(Value:int) -> str:
-#     if Value == DataType.NONE: return "None"
-#     elif Value == DataType.OB: return "OB"
-#     elif Value == DataType.DB: return "DB"
-#     elif Value == DataType.SDB: return "SDB"
-#     elif Value == DataType.FC: return "FC"
-#     elif Value == DataType.SFC: return "SFC"
-#     elif Value == DataType.FB: return "FB"
-#     elif Value == DataType.SFB: return "SFB"
-#     else: return "Undefined"
-
-
-def GetAreaName(Value:int) -> str:
-    if Value == Area.DATA_RECORD: return "Data Record"
-    elif Value == Area.SYSTEM_INFO_200: return "System Info 200"
-    elif Value == Area.SYSTEM_FLAGS_200: return "System Flags 200"
-    elif Value == Area.ANALOG_INPUT_200: return "Analog Input 200"
-    elif Value == Area.ANALOG_OUTPUT_200: return "Analog Output 200"
-    elif Value == Area.COUNTER_S7: return "Counter S7"
-    elif Value == Area.TIMER_S7: return "Timer S7"
-    elif Value == Area.IEC_COUNTER_200: return "IEC Counter 200"
-    elif Value == Area.IEC_TIMER_200: return "IEC Timer 200"
-    elif Value == Area.DIRECT_ACCESS: return "Direct Access"
-    elif Value == Area.PE_INPUTS: return "PE"
-    elif Value == Area.PA_OUTPUTS: return "PA"
-    elif Value == Area.MK_FLAGS: return "MK"
-    elif Value == Area.DB_DATABLOCKS: return "DB"
-    elif Value == Area.DI_DB_INSTANCE: return "DI"
-    elif Value == Area.LOCAL_DATA: return "Local Data"
-    else: return "Undefined"
+def GetAreaFromName(Name:str) -> int:
+    if Name == "PE": return Area.PE_INPUTS
+    elif Name == "PA": return Area.PA_OUTPUTS
+    elif Name == "MK": return Area.MK_FLAGS
+    elif Name == "DB": return Area.DB_DATABLOCKS
+    elif Name == "DI": return Area.DI_DB_INSTANCE
+    elif Name == "CT": return Area.COUNTER_S7
+    elif Name == "TM": return Area.TIMER_S7
+    elif Name == "DR": return Area.DATA_RECORD
+    elif Name == "SI": return Area.SYSTEM_INFO_200
+    elif Name == "SF": return Area.SYSTEM_FLAGS_200
+    elif Name == "AI": return Area.ANALOG_INPUT_200
+    elif Name == "AO": return Area.ANALOG_OUTPUT_200
+    else: raise ValueError(f"Invalid area type {Name}")
 
 
 def GetCpuDiagnostic(Value:int) -> str:

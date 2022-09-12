@@ -847,15 +847,12 @@ class Client:
         return result
 
 
-    def read_area(self, Area:int, Number:int, Offset:int, Elements:int=0, ItemList:list=[]) -> list:
+    def read_area(self, Address:str, Elements:int=0, ItemList:list=[]) -> list:
         result = []
 
-        # Number is specifically for data blocks
-        if Area != const.Area.DB_DATABLOCKS:
-            Number = 0
+        # extract params from address
+        AreaName, Area, Number, Offset = util.GetAreaAddress(id=Address)
 
-        # Check cache to get block length
-        AreaName = util.GetAreaName(Area)
         if self.cache_data.get(AreaName) is None:
             self.read_block_info(BlockType=const.BlockType.DB, BlockNumber=Number)
         elif self.cache_data.get(AreaName).get(Number) is None:
@@ -972,10 +969,9 @@ class Client:
         if not ItemList:
             result.append(
                 Tag(
-                    area=AreaName, 
-                    number=Number, 
+                    address=Address, 
                     value=fragmentedData, 
-                    length=len(fragmentedData), 
+                    size=len(fragmentedData), 
                     type=const.DataType.CHAR
                 )
             )
@@ -1035,9 +1031,7 @@ class Client:
                         ) = struct.unpack_from(f'{self.endian}{unpackFormat}', fragmentedData, offset)
                         value = string[:strLen].decode()
                 item = item._replace(
-                    area=AreaName,
-                    number=Number,
-                    offset=offset,
+                    address=f"{AreaName}{Number}.{offset}",
                     value=value,
                     size=length,
                     type=item.type
@@ -1048,13 +1042,10 @@ class Client:
         return result
 
 
-    def write_area(self, Area:int, Number:int, Offset:int=0, ItemList:list=[]):
-        # Number is specifically for data blocks
-        if Area != const.Area.DB_DATABLOCKS:
-            Number = 0
+    def write_area(self, Address:str, ItemList:list=[]):
+        # extract params from address
+        AreaName, Area, Number, Offset = util.GetAreaAddress(id=Address)
 
-        # Check cache to get block length
-        AreaName = util.GetAreaName(Area)
         if self.cache_data.get(AreaName) is None:
             self.read_block_info(BlockType=const.BlockType.DB, BlockNumber=Number)
         elif self.cache_data.get(AreaName).get(Number) is None:

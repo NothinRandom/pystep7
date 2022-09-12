@@ -10,10 +10,8 @@ __all__ = ["Tag"]
 
 
 class Tag(NamedTuple):
-    name: Optional[str] = ''        #: some form of ID
-    area: Optional[str] = ''        #: S7 area (e.g. PE, PA, DB, etc)
-    number: Optional[int] = 0       #: data block number
-    offset: Optional[int] = 0       #: offset in the data block
+    name: Optional[str] = ''        #: friendly ID
+    address: Optional[str] = ''     #: address space
     value: Optional[Any] = None     #: value read/written, may be ``None`` on error
     size: Optional[int] = 0         #: length of value, useful for string
     type: Optional[str] = ''        #: data type of element (bit, byte, char, etc)
@@ -31,9 +29,7 @@ class Tag(NamedTuple):
     def __str__(self):
         return (
             f"{self.name}, "
-            f"{self.area}, "
-            f"{self.number}, "
-            f"{self.offset}, "
+            f"{self.address}, "
             f"{_r(self.value)}, "
             f"{self.size}, "
             f"{self.type}, "
@@ -45,9 +41,7 @@ class Tag(NamedTuple):
         return (
             f"{self.__class__.__name__}("
             f"name={self.name!r}, "
-            f"area={self.area!r}, "
-            f"number={self.number!r}, "
-            f"offset={self.offset!r}, "
+            f"address={self.address!r}, "
             f"value={self.value!r}, "
             f"size={self.size!r}, "
             f"type={self.type!r}, "
