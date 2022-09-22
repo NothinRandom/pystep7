@@ -1,3 +1,6 @@
+v0.1.2:
+* update {read/write}_area with controller type since readblock doesn't work for S71500
+
 v0.1.1:
 * simplify read/write by merging Area, Number, Offset into Address
 

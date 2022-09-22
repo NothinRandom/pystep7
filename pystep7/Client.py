@@ -73,6 +73,8 @@ class Client:
     _iso_connected  = False
     _pdu_negotiated = False
     _SOCKBUFSIZE    = 4096
+    cpu_info        = CPUInfo()
+    controller      = 1500 # S7-300, S7-400, S7-1500, etc
 
     endian          = const.Endian.big
     cache_data      = {}
@@ -102,6 +104,8 @@ class Client:
         self.SetConnectionParams(LocalTSAP=self.LocalTSAP, RemoteTSAP=self.RemoteTSAP)
         self.ISOConnect()
         self.NegotiatePduLength()
+        self.cpu_info = self.read_cpu_info()
+        self.controller = int(self.cpu_info.systemName.split("/")[0][2:])
         return self
 
 
@@ -853,13 +857,6 @@ class Client:
         # extract params from address
         AreaName, Area, Number, Offset = util.GetAreaAddress(id=Address)
 
-        if self.cache_data.get(AreaName) is None:
-            self.read_block_info(BlockType=const.BlockType.DB, BlockNumber=Number)
-        elif self.cache_data.get(AreaName).get(Number) is None:
-            self.read_block_info(BlockType=const.BlockType.DB, BlockNumber=Number)
-
-        mc7Length = self.cache_data.get(AreaName).get(Number).mc7Length
-
         if Elements < 1:
             for item in ItemList:
                 length = util.DataSizeByte(item.type)
@@ -867,9 +864,20 @@ class Client:
             if Elements < 1:
                 return result
 
-        # Resize elements if bigger than block
-        if Offset + Elements > mc7Length:
-            Elements = mc7Length - Offset
+        if (self.controller < 1500):
+            try:
+                if self.cache_data.get(AreaName) is None:
+                    self.read_block_info(BlockType=const.BlockType.DB, BlockNumber=Number)
+                elif self.cache_data.get(AreaName).get(Number) is None:
+                    self.read_block_info(BlockType=const.BlockType.DB, BlockNumber=Number)
+                mc7Length = self.cache_data.get(AreaName).get(Number).mc7Length
+            except Exception:
+                mc7Length = Elements
+                pass
+
+            # Resize elements if bigger than block
+            if Offset + Elements > mc7Length:
+                Elements = mc7Length - Offset
 
         # Some adjustment
         if (Area == const.Area.COUNTER_S7):
@@ -1046,13 +1054,6 @@ class Client:
         # extract params from address
         AreaName, Area, Number, Offset = util.GetAreaAddress(id=Address)
 
-        if self.cache_data.get(AreaName) is None:
-            self.read_block_info(BlockType=const.BlockType.DB, BlockNumber=Number)
-        elif self.cache_data.get(AreaName).get(Number) is None:
-            self.read_block_info(BlockType=const.BlockType.DB, BlockNumber=Number)
-
-        mc7Length = self.cache_data.get(AreaName).get(Number).mc7Length
-
         # Generate total elements (bytes)
         dataLength = 0
         totalPayload = bytes()
@@ -1097,6 +1098,17 @@ class Client:
             # get total payload and its length
             totalPayload += payload
             dataLength += length
+
+        mc7Length = Elements
+        if (self.controller < 1500):
+            try:
+                if self.cache_data.get(AreaName) is None:
+                    self.read_block_info(BlockType=const.BlockType.DB, BlockNumber=Number)
+                elif self.cache_data.get(AreaName).get(Number) is None:
+                    self.read_block_info(BlockType=const.BlockType.DB, BlockNumber=Number)
+                mc7Length = self.cache_data.get(AreaName).get(Number).mc7Length
+            except Exception:
+                pass
 
         Elements = dataLength
         # Resize elements if bigger than block
