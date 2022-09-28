@@ -1,3 +1,8 @@
+v0.2.0:
+* big refactor {read,write}_area to match controller syntax
+* add iec_{counter,timer}
+* move encode/decode into utility
+
 v0.1.2:
 * update {read/write}_area with controller type since readblock doesn't work for S71500
 

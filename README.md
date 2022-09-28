@@ -13,65 +13,118 @@ pip3 install pystep7
 from datetime import datetime
 from pystep7 import Client
 from pystep7.constants import Area, BlockType, DataType
-from pystep7.tag import Tag
+from pystep7.tag import Tag, IecCounter, IecTimer
 
 
 __RTAGS1 = [
-    Tag(name="BIT", type=DataType.BIT),                # BIT
-    Tag(name="BYTE", type=DataType.BYTE),              # BYTE
-    Tag(name="CHAR", type=DataType.CHAR),              # CHAR
-    Tag(name="DINT", type=DataType.DINT),              # DINT
-    Tag(name="DWORD", type=DataType.DWORD),            # DWORD
-    Tag(name="S7 DATE", type=DataType.DATE),           # S7 DATE
-    Tag(name="S7 DATETIME", type=DataType.DATETIME),   # S7 DATETIME
-    Tag(name="INT", type=DataType.INT),                # INT
-    Tag(name="REAL", type=DataType.REAL),              # REAL
-    Tag(name="S5 TIME", type=DataType.S5TIME),         # S5 TIME
-    Tag(name="STRING", type=DataType.STRING),          # STRING
-    Tag(name="S7 TIME", type=DataType.TIME),           # S7 TIME
-    Tag(name="S7 TOD", type=DataType.TIME_OF_DAY),     # S7 TIME OF DAY
-    Tag(name="WORD", type=DataType.WORD),              # WORD
+    Tag(name="CHAR", address="DB2.DBX2.0", type=DataType.CHAR),
+    Tag(name="BYTE", address="DB2.DBX1.0", type=DataType.BYTE),
+    Tag(name="DINT", address="DB2.DBX4.0", type=DataType.DINT),
+    Tag(name="DWORD", address="DB2.DBX8.0", type=DataType.DWORD),
+    Tag(name="S7 DATE", address="DB2.DBX12.0", type=DataType.DATE),
+    Tag(name="S7 DATETIME", address="DB2.DBX14.0", type=DataType.DATETIME),
+    Tag(name="INT", address="DB2.DBX22.0", type=DataType.INT),
+    Tag(name="REAL", address="DB2.DBX24.0", type=DataType.REAL),
+    Tag(name="S5 TIME", address="DB2.DBX28.0", type=DataType.S5TIME),
+    Tag(name="STRING", address="DB2.DBX30.0", type=DataType.STRING),
+    Tag(name="S7 TIME", address="DB2.DBX286", type=DataType.TIME),
+    Tag(name="S7 TOD", address="DB2.DBX290", type=DataType.TIME_OF_DAY),
+    Tag(name="WORD", address="DB2.DBX294", type=DataType.WORD),
+    Tag(name="BOOL0", address="DB2.DBX0.0", type=DataType.BIT),
+    Tag(name="BOOL1", address="DB2.DBX0.1", type=DataType.BIT),
+    Tag(name="BOOL2", address="DB2.DBX0.2", type=DataType.BIT),
+    Tag(name="BOOL3", address="DB2.DBX0.3", type=DataType.BIT),
+    Tag(name="BOOL4", address="DB2.DBX0.4", type=DataType.BIT),
+    Tag(name="FLAG5", address="M0.4", type=DataType.BIT),
+    Tag(name="INPUT3", address="I0.2", type=DataType.BIT),
+    Tag(name="COUNTER0", address="C0", type=DataType.COUNTER),      # S7-200
+    Tag(name="TIMER0", address="T0", type=DataType.TIMER),          # S7-200
+    Tag(name="IEC_COUNTER0", address="T0", type=DataType.TIMER),    # S7-300+
+    Tag(name="IEC_TIMER0", address="T0", type=DataType.TIMER),      # S7-300+
 ]
 
 __WTAGS2 = [
-    Tag(name="BIT", value=1, type=DataType.BIT),         # BIT
-    Tag(name="BYTE", value=1, type=DataType.BYTE),     # BYTE
-    Tag(name="CHAR", value='T', type=DataType.CHAR),     # CHAR
-    Tag(name="DINT", value=-10000, type=DataType.DINT),  # DINT
-    Tag(name="DWORD", value=10000, type=DataType.DWORD), # DWORD
+    Tag(name="BOOL0", address="DB2.DBX0.0", value=True, type=DataType.BIT),
+    Tag(name="BOOL1", address="DB2.DBX0.1", value=False, type=DataType.BIT),
+    Tag(name="BOOL2", address="DB2.DBX0.3", value=True, type=DataType.BIT),
+    Tag(name="BOOL3", address="DB2.DBX0.4", value=False, type=DataType.BIT),
+    Tag(name="BOOL4", address="DB2.DBX0.5", value=True, type=DataType.BIT),
+    Tag(name="BYTE", address="DB2.DBX1.0", value=1, type=DataType.BYTE),
+    Tag(name="CHAR", address="DB2.DBX2.0", value='T', type=DataType.CHAR),
+    Tag(name="DINT", address="DB2.DBX4.0", value=-10000, type=DataType.DINT),
+    Tag(name="DWORD", address="DB2.DBX8.0", value=10000, type=DataType.DWORD),
     Tag(
         name="S7 DATE", 
+        address="DB2.DBX12.0",
         value=date(2000,1,1), 
         type=DataType.DATE
-    ),  # S7 DATE
+    ),
     Tag(
         name="S7 DATETIME", 
+        address="DB2.DBX14.0",
         value=datetime(2022,9,4,10,11,12,130000),
         type=DataType.DATETIME
-    ),   # S7 DATETIME
-    Tag(name="INT", value=-100, type=DataType.INT),      # INT
-    Tag(name="REAL", value=6.6, type=DataType.REAL),     # REAL
+    ),
+    Tag(name="INT", address="DB2.DBX22.0", value=-100, type=DataType.INT),
+    Tag(name="REAL", address="DB2.DBX24.0", value=6.6, type=DataType.REAL),
     Tag(
         name="S5 TIME",
+        address="DB2.DBX28.0",
         value=16990, 
         type=DataType.S5TIME
     ),  # S5 TIME (milliseconds) smallest is 10, largest is 9990000 (2H:46M:30S)
     Tag(
         name="STRING", 
+        address="DB2.DBX30.0",
         value='Hello World', 
         type=DataType.STRING
     ),  # STRING (max char is 254)
     Tag(
         name="S7 TIME", 
+        address="DB2.DBX286",
         value=1,    # time in milliseconds 
         type=DataType.TIME
     ),  # S7 TIME
     Tag(
         name="S7 TOD", 
+        address="DB2.DBX290",
         value=18000000,
         type=DataType.TIME_OF_DAY
     ),  # S7 TIME OF DAY: milliseconds since midnight
-    Tag(name="WORD", value=1000, type=DataType.WORD),   # WORD
+    Tag(name="INPUT 3", address="I0.2", value=True, type=DataType.BIT),
+    Tag(name="OUTPUT 3", address="Q0.2", value=True, type=DataType.BIT),
+    Tag(name="FLAG 5", address="M0.4", value=True, type=DataType.BIT),
+    Tag(name="COUNTER0", address="C0", value=100, type=DataType.COUNTER),   # S7-200
+    Tag(name="TIMER0", address="T0", value=100, type=DataType.TIMER),       # S7-200 (WIP)
+    Tag(
+        name="IEC_COUNTER0", 
+        address="DB4DBX0.0", 
+        value=IecCounter(
+            C_DU=True, 
+            LOAD_R=True, 
+            PV=1000,
+            Q=False,
+            CV=1000,
+            C_DU_O=False
+        )
+        type=DataType.IecCounter
+    ),  # S7-300+
+    Tag(
+        name="IEC_TIMER", 
+        address="DB5DBX0.0", 
+        value=IecTimer(
+            IN=True,
+            PT=1000,    # milliseconds
+            Q=True,
+            ET=1000,    # milliseconds
+            STATE=1,    # milliseconds
+            STIME=2,    # milliseconds
+            ATIME=3     # milliseconds
+        ),
+        type=DataType.IECTIMER
+    ),  # S7-300+
+]
+    
 
 __HOST = '192.168.1.15' # REQUIRED
 __PORT = 102            # OPTIONAL: default is 102
@@ -413,37 +466,31 @@ with Client(host=__HOST, port=__PORT, rack=__RACK, slot=__SLOT) as plc:
         example: read area memory of data block 1 with no offsets using a list of items
 
     Args:
-        Address(str)[Required]      # valid areas are
-                                    #   "PE" # inputs
-                                    #   "PA" # outputs
-                                    #   "MK" # flags
-                                    #   "DB" # data blocks
-                                    #   "DI" # DB instance
-                                    #   "CT" # counters
-                                    #   "TM" # timers
-                                    
-        Elements(int)[Optional]
-        ItemList(list)[Optional]
+        ItemList(list)[Required]
     Notes:
         Only data block uses block number and the rest is set to 0
-            Example: PE10.1 is not valid and will be override to PE0.1
-                     PA1.1 is not valid and will be override to PA0.1
-                     DB10.1 is valid and produces block number 10 with offset of 1
+            Example: I10.1 is not valid and will be override to I0.1
+                     Q1.1 is not valid and will be override to Q0.1
+                     DB20.DBX1.0 is valid and produces block number 10
+                        with byte offset of 1 and bit offset of 0
 
     Returns:
         list(Tag): list that contains parsed data
             example:
                 [
-                    Tag(name='BIT', address='DB1.0', value=0, size=1, type=1, error=''), 
-                    Tag(name='BYTE', address='DB1.1', value=1, size=1, type=2, error=''), 
-                    Tag(name='CHAR', address='DB1.2', value=b'a', size=2, type=3, error=''), 
-                    Tag(name='DINT', address='DB1.4', value=1, size=4, type=7, error=''), 
-                    Tag(name='DWORD', address='DB1.8', value=1, size=4, type=6, error=''), 
-                    ... 
-                    Tag(name='WORD', address='DB1.294', value=1, size=2, type=4, error='')
+                    Tag(name="CHAR", address="DB2.DBX2.0", value=b'a', size=2, type=3, error=''),
+                    Tag(name="BYTE", address="DB2.DBX1.0", value=1, size=1, type=2, error=''),
+                    Tag(name="DINT", address="DB2.DBX4.0", value=-10000, size=4, type=7, error=''),
+                    Tag(name="DWORD", address="DB2.DBX8.0", value=10000, size=4, type=6, error=''),
+                    ...
+                    Tag(name="BOOL4", address="DB2.DBX0.4", value=False, size=1, type=1, error=''),
+                    Tag(name="FLAG", address="M0.4", value=False, size=1, type=1, error=''),
+                    Tag(name="INPUT 3", address="I0.3", value=True, size=1, type=1, error=''),
+                    Tag(name="COUNTER0", address="C0", value=0, size=1, type=28, error=''),
+                    Tag(name="TIMER0", address="T0", value=0, size=1, type=29, error=''),
                 ]
     """
-    response = plc.read_area(Address="DB1.0", ItemList=__RTAGS1)
+    response = plc.read_area(item_list=__RTAGS1)
 
 
 
@@ -452,22 +499,25 @@ with Client(host=__HOST, port=__PORT, rack=__RACK, slot=__SLOT) as plc:
         example: write area memory of data block 2 with no offsets using a list of items
 
     Args:
-        Address(str)[Required]      # valid areas are
-                                    #   "PE" # inputs
-                                    #   "PA" # outputs
-                                    #   "MK" # flags
-                                    #   "DB" # data blocks
-                                    #   "DI" # DB instance
-                                    #   "CT" # counters
-                                    #   "TM" # timers
-        Elements(int)[Optional]
-        ItemList(list)[Optional]
+        ItemList(list)[Required]
     Notes:
         Only data block uses block number and the rest is set to 0
-            Example: PE10.1 is not valid and will be override to PE0.1
-                     PA1.1 is not valid and will be override to PA0.1
-                     DB10.1 is valid and produces block number 10 with offset of 1
+            Example: I10.1 is not valid and will be override to I0.1
+                     Q1.1 is not valid and will be override to Q0.1
+                     DB20.1 is valid and produces block number 10 with offset of 1
+    Returns:
+        list(Tag): same input list with error update
+            example:
+                [
+                    Tag(name='BIT', address='DB2.DBX0.0', size=1, type=1, error='Missing Value'), 
+                    Tag(name='BYTE', address='DB2.DBX1.0', value=1, size=1, type=2, error=''), 
+                    Tag(name='CHAR', address='DB2.DBX2.0', value=b'a', size=2, type=3, error=''), 
+                    Tag(name='DINT', address='DB2.DBX4.0', value=1, size=4, type=7, error=''), 
+                    Tag(name='DWORD', address='DB2.DBX8.0', value=1, size=4, type=6, error=''), 
+                    ... 
+                    Tag(name='WORD', address='DB2.DBX500.0', value=1, size=2, type=4, error='Invalid Address')
+                ]
 
     """
-    plc.write_area(Address="DB2.0", ItemList=__WTAGS2)
+    plc.write_area(item_list=__WTAGS2)
 ```

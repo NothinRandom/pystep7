@@ -9,66 +9,242 @@ from .constants import (
     ModeSelector,
     StartupSwitch,
     SubBlockType
-)    
+)
+from .tag import (
+    Tag,
+    IecCounter,
+    IecTimer
+)
 
 
-def GetAreaAddress(id:str) -> str:
+def calculate_write_item_size(item:Tag) -> int:
     """
-    Extract area type and address.
+    Calculate write item size
 
     Args:
-        address(str):    memory address id (e.g. "DB1.1")
-    Returns:
-        result(tuple): (area_name, area_type, number, offset)
-    Example:
-        "DB1.1." -> ("DB", 0x84, 1, 1)
+        item(Tag): item to be evaluated
     """
-    # extract area type
-    area_string = GetAlpha(id=id).upper()
-    area = GetAreaFromName(Name=area_string)
-    
-    # extract number and offset
-    address_number = GetNumeric(id=id)
-    number_offset = address_number.split(".")
-    if len(number_offset) != 2:
-        raise ValueError(f'Invalid number/offset "{id}"')
+    total_size = 0
+    data_item_length = get_data_size_byte(item.type)
+    # total_size += data_item_length
+    if data_item_length < 2:
+        data_item_length += 1
+    # total = param_item_length + data_item_length
+    total_size = 12 + (4 + data_item_length)
 
-    number = abs(int(number_offset[0]))
-    offset = abs(int(number_offset[1]))
-
-    if area != Area.DB_DATABLOCKS:
-        number = 0
-    return (area_string, area, number, offset)
+    return total_size
 
 
-def GetAlpha(id:str) -> str:
+def calculate_read_item_size(item:Tag) -> int:
+    """
+    Get total bytes for each read item
+
+    Args:
+        item(Tag): item to be valuated
+    """
+
+    total_size = 12
+
+    return total_size
+
+
+def decode(data:bytes, item_type:int, offset:int=0, endian:str='>'):
+    """
+    Decode value from raw bytes
+
+    Args:
+        data(bytes):    raw bytes buffer
+        item_type(int): item data type
+        offset(int):    offset in the data buffer
+        endian(str):    data endian
+                            ">" (big: default) 
+    """
+
+    encode = False
+    if item_type == DataType.BIT:
+        unpackFormat = "B"
+        encode = True
+    elif item_type == DataType.BYTE:
+        unpackFormat = "B"
+    elif item_type == DataType.CHAR:
+        unpackFormat = "1sB"
+    elif item_type == DataType.INT:
+        unpackFormat = "h"
+    elif item_type == DataType.WORD:
+        unpackFormat = "H"
+    elif item_type == DataType.DATE: # days since 1990-01-01
+        unpackFormat = "H"
+        encode = True
+    elif (
+        item_type == DataType.COUNTER
+        or item_type == DataType.TIMER
+    ): # 16b signed
+        unpackFormat = "h"
+        encode = True
+    elif item_type == DataType.DATETIME:
+        unpackFormat = "8s"
+        encode = True
+    elif item_type == DataType.S5TIME:
+        unpackFormat = "2s"
+        encode = True
+    elif item_type == DataType.DINT:
+        unpackFormat = "i"
+    elif item_type == DataType.REAL:
+        unpackFormat = "f"
+    elif (
+        item_type == DataType.DWORD
+        or item_type == DataType.TIME
+        or item_type == DataType.TIME_OF_DAY
+    ):
+        unpackFormat = "I"
+    elif item_type == DataType.IECCOUNTER:
+        unpackFormat = "9s"
+        encode = True
+    elif item_type == DataType.IECTIMER:
+        unpackFormat = "22s"
+        encode = True
+    value = struct.unpack_from(f'{endian}{unpackFormat}', data, offset)[0]
+    if encode:
+        if item_type == DataType.BIT:
+            value = True if value == 1 else False
+        if item_type == DataType.DATE:
+            value = get_date(DaysSince=value)
+        elif item_type == DataType.DATETIME:
+            value = get_datetime(buffer=value)
+        elif item_type == DataType.S5TIME:
+            value = get_s5_time(buffer=value)
+        elif item_type == DataType.COUNTER:
+            value = get_counter(Value=value)
+        elif item_type == DataType.TIMER:
+            value = get_timer(buffer=value)
+        elif item_type == DataType.IECCOUNTER:
+            value = get_iec_counter(buffer=value, endian=endian)
+        elif item_type == DataType.IECTIMER:
+            value = get_iec_timer(buffer=value, endian=endian)
+    return value
+
+
+def encode(item:Tag, endian:str='>') -> bytes:
+    """
+    Encode value into raw bytes
+
+    Args:
+        item(Tag):      contains item metadata
+        endian(str):    data endian
+                            ">" (big: default)
+    Returns:
+        raw_bytes(bytes): encoded data as bytes
+    """
+
+    if (item.type == DataType.BIT
+        or item.type == DataType.BYTE
+    ):
+        raw_bytes = struct.pack('BB', abs(int(item.value)&0xFF), 0x00)
+    elif item.type == DataType.CHAR:
+        raw_bytes = struct.pack('1sB', str(item.value).encode(), 0)
+    elif item.type == DataType.INT:
+        raw_bytes = struct.pack(f'{endian}h', int(item.value))
+    elif item.type == DataType.WORD:
+        raw_bytes = struct.pack(f'{endian}H', abs(item.value))
+    elif item.type == DataType.DINT:
+        raw_bytes = struct.pack(f'{endian}i', int(item.value))
+    elif (
+        item.type == DataType.DWORD
+        or item.type == DataType.TIME_OF_DAY
+        or item.type == DataType.TIME
+    ):
+        raw_bytes = struct.pack(f'{endian}I', abs(int(item.value)))
+    elif item.type == DataType.REAL:
+        raw_bytes = struct.pack(f'{endian}f', item.value)
+    elif item.type == DataType.STRING:
+        raw_bytes = struct.pack(
+            f'{endian}BB{len(item.value)}s', 
+            0xFE,   # max string length 
+            len(item.value), 
+            item.value.encode()
+        )
+    elif item.type == DataType.DATE: # days since 1990-01-01
+        raw_bytes = struct.pack(f'{endian}H', set_date(item.value))
+    elif item.type == DataType.DATETIME:
+        raw_bytes = struct.pack('8s', set_datetime(item.value))
+    elif item.type == DataType.COUNTER:
+        raw_bytes = struct.pack(f'{endian}H', set_counter(Value=abs(int(item.value))))
+    elif item.type == DataType.TIMER:
+        raw_bytes = struct.pack(f'{endian}H', int(item.value))
+    elif item.type == DataType.S5TIME:
+        raw_bytes = struct.pack('2s', set_s5_time(item.value))
+    elif item.type == DataType.IECCOUNTER:
+        raw_bytes = struct.pack('10s', set_iec_counter(item.value))
+    elif item.type == DataType.IECTIMER:
+        raw_bytes = struct.pack('22s', set_iec_timer(item.value))
+    return raw_bytes
+
+
+def get_all_alpha(address:str) -> list:
+    """
+    Get all alpha instances
+
+    Args:
+        address(str): address (e.g. "DB 21.DBX 4.1" or "DB21.DBX4.1")
+    Returns:
+        result(list): list of all alpha instances
+            example: ['DB', 'DBX']
+    """
+    alphas = re.findall(r"\D+", address.replace(".", ""))
+    if len(alphas) < 1:
+        raise ValueError("Invalid input")
+    return [alpha.strip().upper() for alpha in alphas]
+
+
+def get_all_numeric(address:str) -> list:
+    """
+    Get all numeric instances and DB number
+
+    Args:
+        address(str): address (e.g. "DB 21.DBX 4.1" or "DB21.DBX4.1")
+    Returns:
+        result(list): list of all numeric instances
+            example: [21, 4, 1]
+            exaple: [0, 1, 0] for "I 1.0" or "I1.0"
+    """
+    numbers = re.findall(r"\d+", address)
+    if len(numbers) < 1:
+        raise ValueError("Invalid input")
+    numbers = [int(i) for i in numbers]
+    # auto insert for non-DB areas
+    while len(numbers) < 3:
+        numbers.insert(0, 0)
+    return numbers
+
+
+def get_alpha(id:str) -> str:
     letters = re.search(r"\D+", id)
     if letters is None:
         raise ValueError("Invalid input")
     return letters.group(0)
 
 
-def GetNumeric(id:str) -> str:
+def get_numeric(id:str) -> str:
     numbers = re.search(r"\d.*", id)
     if numbers is None:
         raise ValueError("Invalid input")
     return numbers.group(0)
 
 
-def BCDtoByte(B:int):
+def bcd_to_byte(B:int):
     return ((B >> 4) * 10) + (B & 0x0F)
 
 
-def ByteToBCD(Value:int):
+def byte_to_bcd(Value:int):
     return ((Value // 10) << 4) | (Value % 10)
 
 
-def ByteToNibbles(Value:int):
+def byte_to_nibbles(Value:int):
     Value = Value & 0xFF
     return (Value >> 4, Value & 0x0F)
 
 
-def DataSizeByte(DT:int) -> int:
+def get_data_size_byte(DT:int) -> int:
     if DT == DataType.BIT: return 1  # S7 sends 1 byte per bit
     elif DT == DataType.BYTE: return 1
     elif DT == DataType.CHAR: return 2 # has terminating char
@@ -78,23 +254,25 @@ def DataSizeByte(DT:int) -> int:
     elif DT == DataType.DWORD: return 4
     elif DT == DataType.REAL: return 4
     elif DT == DataType.STRING: return 256
-    elif DT == DataType.COUNTER: return 2
-    elif DT == DataType.TIMER: return 2
+    elif DT == DataType.COUNTER: return 1
+    elif DT == DataType.TIMER: return 1
     elif DT == DataType.S5TIME: return 2
     elif DT == DataType.DATE: return 2
     elif DT == DataType.TIME: return 4
     elif DT == DataType.TIME_OF_DAY: return 4
     elif DT == DataType.DATETIME: return 8
+    elif DT == DataType.IECCOUNTER: return 9
+    elif DT == DataType.IECTIMER: return 22
     else: return 0
 
 
-def GetCpuStatus(Status:int) -> str:
+def get_cpu_status(Status:int) -> str:
     if Status == CpuStatus.UNKNOWN: return "Unknown"
     elif Status == CpuStatus.RUN: return "Run"
     else: return "Stop"
 
 
-def GetModeSelector(Value:int) -> str:
+def get_mode_selector(Value:int) -> str:
     if Value == ModeSelector.RUN: return "Run"
     elif Value == ModeSelector.RUN_P: return "Run Program"
     elif Value == ModeSelector.STOP: return "Stop"
@@ -102,13 +280,13 @@ def GetModeSelector(Value:int) -> str:
     else: return "Undefined"
 
 
-def GetStartupSwitchSelector(Value:int) -> str:
+def get_startup_switch_selector(Value:int) -> str:
     if Value == StartupSwitch.COLD_RESTART: return "Cold Restart"
     elif Value == StartupSwitch.WARM_RESTART: return "Warm Restart"
     else: return "Undefined"
 
 
-def GetBlockLanguage(Value:int) -> str:
+def get_block_language(Value:int) -> str:
     if Value == 0x01: return "AWL"
     elif Value == 0x02: return "KOP"
     elif Value == 0x03: return "FUP"
@@ -123,7 +301,7 @@ def GetBlockLanguage(Value:int) -> str:
     else: return "Undefined"
 
 
-def GetSubblockType(Value:int) -> str:
+def get_subblock_type(Value:int) -> str:
     if Value == SubBlockType.OB: return "OB"
     elif Value == SubBlockType.DB: return "DB"
     elif Value == SubBlockType.SDB: return "SDB"
@@ -134,13 +312,13 @@ def GetSubblockType(Value:int) -> str:
     else: return "Undefined"
 
 
-def GetS5Time(Buffer:bytes, Offset:int=0) -> int:
-    multiplier, timeHi = ByteToNibbles(Buffer[Offset+0])
-    timeLo = BCDtoByte(Buffer[Offset+1])
+def get_s5_time(buffer:bytes, offset:int=0) -> int:
+    multiplier, timeHi = byte_to_nibbles(buffer[offset+0])
+    timeLo = bcd_to_byte(buffer[offset+1])
     return (10**multiplier)*(timeHi*1000 + timeLo*10)
 
 
-def SetS5Time(Value:int) -> bytes:
+def set_s5_time(Value:int) -> bytes:
     Value = Value // 10
     sValue = str(Value)
     modLen = len(sValue) - 3
@@ -155,11 +333,104 @@ def SetS5Time(Value:int) -> bytes:
     )
 
 
-def GetTime(Milliseconds:int=0, DaysSince:int=0) -> datetime:
+def get_iec_counter(buffer:bytes, offset:int=0, endian:str=">") -> IecCounter:
+    (
+        CDU_LOADR,
+        RESERVED1,
+        PV,
+        Q,
+        RESERVED2,
+        CV,
+        CDUO
+    ) = struct.unpack_from(f'{endian}BBh?Bh?', buffer, offset)
+    C_DU = bool(CDU_LOADR & 1)
+    LOAD_R = bool((CDU_LOADR >> 1) & 1)
+    return IecCounter(
+        C_DU=C_DU,
+        LOAD_R=LOAD_R,
+        PV=PV,
+        Q=Q,
+        CV=CV,
+        C_DU_O=CDUO,
+    )
+
+
+def set_iec_counter(counter:IecCounter, endian:str=">") -> bytes:    
+    CDU_LOADR = (int(counter.LOAD_R) << 1) + int(counter.C_DU)
+    return struct.pack(
+        f'{endian}BBh?Bh?B',
+        CDU_LOADR,
+        0x00, # RESERVED
+        counter.PV,
+        counter.Q,
+        0x00, # RESERVED
+        counter.CV,
+        counter.C_DU_O,
+        0x00 # PADDING
+    )
+
+
+def get_iec_timer(buffer:bytes, offset:int=0, endian:str=">") -> IecTimer:
+    (
+        IN,
+        RESERVED1,
+        PT,
+        Q,
+        RESERVED2,
+        ET,
+        STATE,
+        RESERVED3,
+        STIME,
+        ATIME
+    ) = struct.unpack_from(f'{endian}?Bi?BiBBii', buffer, offset)
+    return IecTimer(
+        IN=IN,
+        PT=PT,
+        Q=Q,
+        ET=ET,
+        STATE=STATE,
+        STIME=STIME,
+        ATIME=ATIME
+    )
+
+
+def set_iec_timer(timer:IecTimer, endian:str=">") -> bytes:
+    return struct.pack(
+        f'{endian}?Bi?BiBBii',
+        timer.IN,
+        0x00, # RESERVED
+        timer.PT,
+        timer.Q,
+        0x00, # RESERVED
+        timer.ET,
+        timer.STATE,
+        0x00, # RESERVED
+        timer.STIME,
+        timer.ATIME
+    )
+
+
+def get_counter(Value:int) -> int:
+    return bcd_to_byte(Value) * 100 + bcd_to_byte(Value >> 8)
+
+
+def set_counter(Value:int) -> int:
+    return byte_to_bcd(Value // 100) + (byte_to_bcd(Value % 100) << 8)
+
+
+def get_timer(buffer:bytes, offset:int=0) -> int:
+    return 0
+
+
+def set_timer(Value:int) -> bytes:
+    return 0
+
+
+def get_time(Milliseconds:int=0, DaysSince:int=0) -> datetime:
     return datetime(1984, 1, 1) + timedelta(days=DaysSince, milliseconds=Milliseconds)
 
 
-def SetTime(DT:datetime, endian:str='>') -> bytes:
+def set_time(DT:datetime, endian:str='>') -> bytes:
     if type(DT) != datetime:
         return b'\x00\x00\x00\x00\x00\x00'
     if DT.year < 1984:
@@ -172,36 +443,36 @@ def SetTime(DT:datetime, endian:str='>') -> bytes:
     return struct.pack(f'{endian}IH', milliseconds, days)
 
 
-def GetDate(DaysSince:int=0) -> date:
+def get_date(DaysSince:int=0) -> date:
     return date(1990, 1, 1) + timedelta(days=DaysSince)
 
 
-def SetDate(DT:date) -> int:
+def set_date(DT:date) -> int:
     if type(DT) != date:
         return 0
     return (DT - date(1990, 1, 1)).days
 
 
-def GetDateTime(Buffer:bytes, Offset:int=0) -> datetime:
-    Year = BCDtoByte(Buffer[Offset+0])
+def get_datetime(buffer:bytes, offset:int=0) -> datetime:
+    Year = bcd_to_byte(buffer[offset+0])
     if (Year < 90):
         Year += 2000
     else:
         Year += 1900
 
-    Month = BCDtoByte(Buffer[Offset+1])
-    Day = BCDtoByte(Buffer[Offset+2])
-    Hour = BCDtoByte(Buffer[Offset+3])
-    Minute = BCDtoByte(Buffer[Offset+4])
-    Second = BCDtoByte(Buffer[Offset+5])
-    Millisecond = BCDtoByte(Buffer[Offset+6]) * 10 + BCDtoByte(Buffer[Offset+7]) // 10
+    Month = bcd_to_byte(buffer[offset+1])
+    Day = bcd_to_byte(buffer[offset+2])
+    Hour = bcd_to_byte(buffer[offset+3])
+    Minute = bcd_to_byte(buffer[offset+4])
+    Second = bcd_to_byte(buffer[offset+5])
+    Millisecond = bcd_to_byte(buffer[offset+6]) * 10 + bcd_to_byte(buffer[offset+7]) // 10
     try:
         return datetime(Year, Month, Day, Hour, Minute, Second, Millisecond*1000)
     except:
         return datetime(1990, 1, 1)
 
 
-def SetDateTime(DT:datetime) -> bytes:
+def set_datetime(DT:datetime) -> bytes:
     year = DT.year
     if year > 1999:
         year -= 2000
@@ -216,25 +487,25 @@ def SetDateTime(DT:datetime) -> bytes:
 
     return struct.pack(
         'BBBBBBBB',
-        ByteToBCD(year),
-        ByteToBCD(DT.month),
-        ByteToBCD(DT.day),
-        ByteToBCD(DT.hour),
-        ByteToBCD(DT.minute),
-        ByteToBCD(DT.second),
-        ByteToBCD(MsecH),
-        ByteToBCD(MsecL)
+        byte_to_bcd(year),
+        byte_to_bcd(DT.month),
+        byte_to_bcd(DT.day),
+        byte_to_bcd(DT.hour),
+        byte_to_bcd(DT.minute),
+        byte_to_bcd(DT.second),
+        byte_to_bcd(MsecH),
+        byte_to_bcd(MsecL)
     )
 
 
-def GetAreaFromName(Name:str) -> int:
-    if Name == "PE": return Area.PE_INPUTS
-    elif Name == "PA": return Area.PA_OUTPUTS
-    elif Name == "MK": return Area.MK_FLAGS
+def get_area_from_name(Name:str) -> int:
+    if Name == "I": return Area.PE_INPUTS
+    elif Name == "Q": return Area.PA_OUTPUTS
+    elif Name == "M": return Area.MK_FLAGS
     elif Name == "DB": return Area.DB_DATABLOCKS
     elif Name == "DI": return Area.DI_DB_INSTANCE
-    elif Name == "CT": return Area.COUNTER_S7
-    elif Name == "TM": return Area.TIMER_S7
+    elif Name == "C": return Area.COUNTER_S7
+    elif Name == "T": return Area.TIMER_S7
     elif Name == "DR": return Area.DATA_RECORD
     elif Name == "SI": return Area.SYSTEM_INFO_200
     elif Name == "SF": return Area.SYSTEM_FLAGS_200
@@ -243,7 +514,7 @@ def GetAreaFromName(Name:str) -> int:
     else: raise ValueError(f"Invalid area type {Name}")
 
 
-def GetCpuDiagnostic(Value:int) -> str:
+def get_cpu_diagnostic(Value:int) -> str:
     if Value == 0x113A: return "Start request for cyclic interrupt OB with special handling (S7-300 only)"
     elif Value == 0x1155: return "Status alarm for PROFIBUS DP"
     elif Value == 0x1156: return "Update interrupt for PROFIBUS DP"
@@ -667,7 +938,7 @@ def GetCpuDiagnostic(Value:int) -> str:
     else: return "Undefined"
 
 
-def GetCpuLed(Value:int) -> str:
+def get_cpu_led(Value:int) -> str:
     if Value == 0x0001: return "SF (group error)"
     elif Value == 0x0002: return "INTF (internal error)"
     elif Value == 0x0003: return "EXTF (external error)"

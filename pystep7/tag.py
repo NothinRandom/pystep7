@@ -380,3 +380,93 @@ class CPULed(NamedTuple):
             f"error={self.error!r}"
             ")"
         )
+
+
+class IecCounter(NamedTuple):
+    """
+    Input
+        C_DU(bool):     Counter type D(down) U(up) [offset 0.0]
+        LOAD_R(bool):   LOAD (down) R (up) [offset 0.1]
+        PV(int):        Preset value [offset 2.0]
+    Output
+        Q(bool):        Done flag [offset 4.0]
+        CV(int):        Current value [offset 6.0]
+    InOut
+        C_DU_O(bool):   Counter D(down) U(up) [offset 8.0]
+    """
+    C_DU: Optional[bool] = False
+    LOAD_R: Optional[bool] = False
+    PV: Optional[int] = 0x0000
+    Q: Optional[bool] = False
+    CV: Optional[int] = 0x0000
+    C_DU_O: Optional[bool] = False
+
+    def __str__(self):
+        return (
+            f"{self.C_DU},"
+            f"{self.LOAD_R},"
+            f"{self.PV},"
+            f"{self.Q},"
+            f"{self.CV},"
+            f"{self.C_DU_O}"
+        )
+
+
+    def __repr__(self):
+        return (
+            f"{self.__class__.__name__}("
+            f"C_DU={self.C_DU!r}, "
+            f"LOAD_R={self.LOAD_R!r}, "
+            f"PV={self.PV!r}, "
+            f"Q={self.Q!r}, "
+            f"CV={self.CV!r}, "
+            f"C_DU_O={self.C_DU_O!r}"
+            ")"
+        )
+
+
+class IecTimer(NamedTuple):
+    """
+    Input
+        IN(bool):       Enable flag [offset 0.0]
+        PT(int):        Preset time (TIME) [offset 2.0]
+    Output
+        Q(bool):        Done flag [offset 6.0]
+        ET(int):        Elapsed time (TIME) [offset 8.0]
+    InOut
+        STATE(int):     (BYTE) [offset 12.0]
+        STIME(int):     (TIME) [offset 14.0]
+        ATIME(int):     (TIME) [offset 18.0]
+    """
+    IN: Optional[bool] = False
+    PT: Optional[int] = 0x0000
+    Q: Optional[bool] = False
+    ET: Optional[int] = 0x0000
+    STATE: Optional[int] = 0x00
+    STIME: Optional[int] = 0x0000
+    ATIME: Optional[int] = 0x0000
+
+    def __str__(self):
+        return (
+            f"{self.IN},"
+            f"{self.PT},"
+            f"{self.Q},"
+            f"{self.ET},"
+            f"{self.STATE},"
+            f"{self.STIME},"
+            f"{self.ATIME}"
+        )
+
+
+    def __repr__(self):
+        return (
+            f"{self.__class__.__name__}("
+            f"IN={self.IN!r}, "
+            f"PT={self.PT!r}, "
+            f"Q={self.Q!r}, "
+            f"ET={self.ET!r}, "
+            f"STATE={self.STATE!r}, "
+            f"STIME={self.STIME!r}, "
+            f"ATIME={self.ATIME!r}"
+            ")"
+        )

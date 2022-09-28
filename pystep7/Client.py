@@ -100,10 +100,10 @@ class Client:
         Used by with statement: https://peps.python.org/pep-0343/
         Does a 2 stage TCP and ISO connect
         """
-        self.TCPConnect(ip=self.host, port=self.port)
-        self.SetConnectionParams(LocalTSAP=self.LocalTSAP, RemoteTSAP=self.RemoteTSAP)
-        self.ISOConnect()
-        self.NegotiatePduLength()
+        self.tcp_connect(ip=self.host, port=self.port)
+        self.set_connection_parameters(LocalTSAP=self.LocalTSAP, RemoteTSAP=self.RemoteTSAP)
+        self.iso_connect()
+        self.negotiate_pdu_length()
         self.cpu_info = self.read_cpu_info()
         self.controller = int(self.cpu_info.systemName.split("/")[0][2:])
         return self
@@ -137,7 +137,7 @@ class Client:
             self.__log.setLevel(logging.ERROR)
 
 
-    def TCPConnect(self, ip:str, port:int):
+    def tcp_connect(self, ip:str, port:int):
         """
         Connect to PLC.
 
@@ -155,7 +155,7 @@ class Client:
             self._sock.connect((ip, port))
             self._tcp_connected = True
         except socket.timeout:
-            self.__log.error(f"self.TCPConnect(): {str(socket.timeout)}")
+            self.__log.error(f"self.tcp_connect(): {str(socket.timeout)}")
         
 
     def close(self):
@@ -167,7 +167,7 @@ class Client:
         self._tcp_connected = self._iso_connected = self._pdu_negotiated = False
 
 
-    def _TCPSend(self, send_data:bytes):
+    def _tcp_send(self, send_data:bytes):
         """
         Send data 
 
@@ -176,17 +176,17 @@ class Client:
         """
 
         if self._tcp_connected:
-            self.__log.debug(f'self._TCPSend(): \n{send_data.hex()}')
+            self.__log.debug(f'self._tcp_send(): \n{send_data.hex()}')
             try:
                 self._sock.send(send_data)
             except socket.timeout:
-                self.__log.error(f"self._TCPSend(): {str(socket.timeout)}")
+                self.__log.error(f"self._tcp_send(): {str(socket.timeout)}")
         else:
-            self.__log.error(f"self._TCPSend(): Socket is not connected. Please use connect method")
+            self.__log.error(f"self._tcp_send(): Socket is not connected. Please use connect method")
             raise CommTypeError("Socket is not connected. Please use connect method")
 
 
-    def _ISOSend(self, send_data:bytes):
+    def _iso_send(self, send_data:bytes):
         """
         Send data 
 
@@ -195,13 +195,13 @@ class Client:
         """
 
         if self._tcp_connected and self._iso_connected:
-            self.__log.debug(f'self._ISOSend(): \n{send_data.hex()}')
+            self.__log.debug(f'self._iso_send(): \n{send_data.hex()}')
             try:
                 self._sock.send(send_data)
             except socket.timeout:
-                self.__log.error(f"self._ISOSend(): {str(socket.timeout)}")
+                self.__log.error(f"self._iso_send(): {str(socket.timeout)}")
         else:
-            self.__log.error(f"self._ISOSend(): Socket is not connected. Please use connect method")
+            self.__log.error(f"self._iso_send(): Socket is not connected. Please use connect method")
             raise CommTypeError("Socket is not connected. Please use connect method")
 
 
@@ -239,7 +239,7 @@ class Client:
         return data
 
 
-    def SetConnectionParams(self, LocalTSAP:int, RemoteTSAP:int):
+    def set_connection_parameters(self, LocalTSAP:int, RemoteTSAP:int):
         LocTSAP = LocalTSAP & 0x0000FFFF
         RemTSAP = RemoteTSAP & 0x0000FFFF
         self.LocalTSAP_HI = LocTSAP >> 8
@@ -248,30 +248,30 @@ class Client:
         self.RemoteTSAP_LO = (RemTSAP & 0x00FF)
 
 
-    def ISOConnect(self):
+    def iso_connect(self):
         # connection request
         request = const.ISO_CR
         request[16] = self.LocalTSAP_HI
         request[17] = self.LocalTSAP_LO
         request[20] = self.RemoteTSAP_HI
         request[21] = self.RemoteTSAP_LO
-        self._TCPSend(send_data=bytes(request))
+        self._tcp_send(send_data=bytes(request))
         data = self._recv()
         length = struct.unpack_from(f'{self.endian}H', data, 2)[0]
         self._iso_connected = False
         if (length == 22):
             PDUType = struct.unpack_from('B', data, 5)[0]
             if (PDUType != const.COTP.CONNECT_CONFIRM):
-                self.__log.error(f"self.ISOConnect(): Failed to perform ISO connect")
+                self.__log.error(f"self.iso_connect(): Failed to perform ISO connect")
                 raise CommTypeError("Failed to perform ISO connect")
             else:
                 self._iso_connected = True
         else:
-            self.__log.error(f"self.ISOConnect(): Invalid PDU")
+            self.__log.error(f"self.iso_connect(): Invalid PDU")
             raise CommTypeError("Invalid PDU")
 
 
-    def NegotiatePduLength(self):
+    def negotiate_pdu_length(self):
         """
         ROSCTR:Job:Function:Setup Communication
         ROSCTR:Ack_Data:Function:Setup Communication
@@ -281,29 +281,29 @@ class Client:
         request = bytearray(const.S7_PN)
         struct.pack_into(f'{self.endian}H', request, 23, self._PduSizeRequested)
         # Sends the connection request telegram
-        self._ISOSend(send_data=request)
+        self._iso_send(send_data=request)
         data = self._recv()
         length = struct.unpack_from(f'{self.endian}H', data, 2)[0]
-        headerErrorClass, headerErrorCode = struct.unpack_from('BB', data, 17)
+        header_error_class, header_error_code = struct.unpack_from('BB', data, 17)
         self._pdu_negotiated = False
         # check S7 Error
         if (length == 27 
-            and headerErrorClass == const.ErrorClass.NO_ERROR
-            and headerErrorCode == 0x00
+            and header_error_class == const.ErrorClass.NO_ERROR
+            and header_error_code == 0x00
         ):
             # Get PDU Size Negotiated
             self._pdu_length = struct.unpack_from(f'{self.endian}H', data, 25)[0]
             if (self._pdu_length > 0):
                 self._pdu_negotiated = True
             else:
-                self.__log.error(f"self.NegotiatePduLength(): Unable to negotiate PDU")
+                self.__log.error(f"self.negotiate_pdu_length(): Unable to negotiate PDU")
                 raise CommTypeError("Unable to negotiate PDU")
         else:
-            self.__log.error(f"self.NegotiatePduLength(): Unable to negotiate PDU")
+            self.__log.error(f"self.negotiate_pdu_length(): Unable to negotiate PDU")
             raise CommTypeError("Unable to negotiate PDU")
 
 
-    def SetConnectionType(self, ConnectionType:int):
+    def set_connection_type(self, ConnectionType:int):
         self.ConnType = ConnectionType
 
 
@@ -321,15 +321,15 @@ class Client:
 
         length = struct.unpack_from(f'{self.endian}H', data, 2)[0]
         if (length > 30):  # the minimum expected
-            paramErrorCode, dataReturnCode = struct.unpack_from(f'{self.endian}HB', data, 27)
-            if (paramErrorCode == const.ParamErrorCode.NO_ERROR 
-                and dataReturnCode == const.ReturnCode.SUCCESS
+            param_error_code, data_return_code = struct.unpack_from(f'{self.endian}HB', data, 27)
+            if (param_error_code == const.ParamErrorCode.NO_ERROR 
+                and data_return_code == const.ReturnCode.SUCCESS
             ):
-                # year1 = util.BCDtoByte(data[34])
-                return util.GetDateTime(Buffer=data, Offset=35)
+                # year1 = util.bcd_to_byte(data[34])
+                return util.get_datetime(buffer=data, offset=35)
             else:
-                self.__log.error(f"self.read_plc_time(): {ErrorCode(paramErrorCode)}")
-                raise ErrorCode(paramErrorCode)
+                self.__log.error(f"self.read_plc_time(): {ErrorCode(param_error_code)}")
+                raise ErrorCode(param_error_code)
         else:
             self.__log.error(f"self.read_plc_time(): Invalid PDU size")
             raise CommTypeError("Invalid PDU size")
@@ -357,15 +357,15 @@ class Client:
         """
 
         request = bytearray(const.S7_SET_CLOCK)
-        struct.pack_into('8s', request, 31, util.SetDateTime(DT=dt))
+        struct.pack_into('8s', request, 31, util.set_datetime(DT=dt))
 
         self._send(send_data=request)
         data = self._recv()
 
         length = struct.unpack_from(f'{self.endian}H', data, 2)[0]
         if (length > 30): # the minimum expected
-            paramErrorCode = struct.unpack_from(f'{self.endian}H', data, 27)[0]
-            if (paramErrorCode != const.ParamErrorCode.NO_ERROR):
+            param_error_code = struct.unpack_from(f'{self.endian}H', data, 27)[0]
+            if (param_error_code != const.ParamErrorCode.NO_ERROR):
                 self.__log.error(f"self.set_plc_time(): Invalid Response")
                 raise CommTypeError("Invalid Response")
         else:
@@ -391,17 +391,17 @@ class Client:
         cpuStatus = CPUStatus()
         length = struct.unpack_from(f'{self.endian}H', data, 2)[0]
         if (length > 30): # the minimum expected
-            paramErrorCode = struct.unpack_from(f'{self.endian}H', data, 27)[0]
-            if (paramErrorCode == const.ParamErrorCode.NO_ERROR):
+            param_error_code = struct.unpack_from(f'{self.endian}H', data, 27)[0]
+            if (param_error_code == const.ParamErrorCode.NO_ERROR):
                 status = struct.unpack_from('B', data, 44)[0]
-                hiNib, loNib = util.ByteToNibbles(status)
+                hiNib, loNib = util.byte_to_nibbles(status)
                 cpuStatus = cpuStatus._replace(
-                    requestedMode=util.GetCpuStatus(Status=loNib),
-                    previousMode=util.GetCpuStatus(Status=hiNib)
+                    requestedMode=util.get_cpu_status(Status=loNib),
+                    previousMode=util.get_cpu_status(Status=hiNib)
                 )
             else:
-                self.__log.error(f"self.read_cpu_status(): {ErrorCode(paramErrorCode)}")
-                raise ErrorCode(paramErrorCode)
+                self.__log.error(f"self.read_cpu_status(): {ErrorCode(param_error_code)}")
+                raise ErrorCode(param_error_code)
         else:
             self.__log.error(f"self.read_cpu_status(): Invalid PDU size")
             raise CommTypeError("Invalid PDU size")
@@ -409,6 +409,13 @@ class Client:
 
 
     def read_catalog_code(self) -> CatalogCode:
+        """
+        Read Catalog Code.
+
+        Returns:
+            CatalogCode(NamedTuple)
+        """
+
         catalogCode = CatalogCode()
 
         request = bytearray(const.S7_SZL_FIRST)
@@ -419,12 +426,12 @@ class Client:
 
         length = struct.unpack_from(f'{self.endian}H', data, 2)[0]
         if (length > 30): # the minimum expected
-            paramErrorCode, dataReturnCode = struct.unpack_from(f'{self.endian}HB', data, 27)
-            if (paramErrorCode == const.ParamErrorCode.NO_ERROR 
-                and dataReturnCode == const.ReturnCode.SUCCESS
+            param_error_code, data_return_code = struct.unpack_from(f'{self.endian}HB', data, 27)
+            if (param_error_code == const.ParamErrorCode.NO_ERROR 
+                and data_return_code == const.ReturnCode.SUCCESS
             ):
                 offset = 37
-                sectionLength, szlCount = struct.unpack_from(f'{self.endian}HH', data, offset)
+                section_length, szlCount = struct.unpack_from(f'{self.endian}HH', data, offset)
                 offset += 4
                 for item in range(szlCount):
                     (
@@ -434,7 +441,7 @@ class Client:
                         ausbg, 
                         ausbe
                     ) = struct.unpack_from(f'{self.endian}H20sHHH', data, offset)
-                    offset += sectionLength
+                    offset += section_length
                     mlfb = mlfb.decode().strip()
                     if index == 0x0001:
                         catalogCode = catalogCode._replace(moduleOrderNumber=mlfb)
@@ -449,8 +456,8 @@ class Client:
                         catalogCode = catalogCode._replace(firmwareExtensionId=mlfb)
                         catalogCode = catalogCode._replace(firmwareExtVersion=f"{ausbg}.{ausbe}")
             else:
-                self.__log.error(f"self.read_catalog_code(): {ErrorCode(paramErrorCode)}")
-                raise ErrorCode(paramErrorCode)
+                self.__log.error(f"self.read_catalog_code(): {ErrorCode(param_error_code)}")
+                raise ErrorCode(param_error_code)
         else:
             self.__log.error(f"self.read_catalog_code(): Invalid PDU size")
             raise CommTypeError("Invalid PDU size")
@@ -474,7 +481,7 @@ class Client:
             return cpuInfo(error="Invalid PDU Length")
 
         offset = 4
-        sectionLength, szlCount = struct.unpack_from(f'{self.endian}HH', data, offset)
+        section_length, szlCount = struct.unpack_from(f'{self.endian}HH', data, offset)
         offset += 4
         for item in range(szlCount):
             if offset + 34 >= totalLength:
@@ -484,7 +491,7 @@ class Client:
                 data, 
                 offset
             )
-            offset += sectionLength
+            offset += section_length
             if index == 0x0001:
                 name = name.decode().strip()
                 cpuInfo = cpuInfo._replace(systemName=name)
@@ -527,6 +534,12 @@ class Client:
 
 
     def read_comm_proc(self) -> list:
+        """
+        Read communication processor
+
+        Returns:
+            result(list): list of communication processor capabilities
+        """
         result = []
         index = 0x0001
         data = self.read_szl(id=const.SystemStateList.COMM_PROC, index=index)
@@ -536,9 +549,9 @@ class Client:
             return CommProc(error="Invalid PDU Length")
 
         offset = 4
-        sectionLength, szlCount = struct.unpack_from(f'{self.endian}HH', data, offset)
+        section_length, szlCount = struct.unpack_from(f'{self.endian}HH', data, offset)
         offset += 4
-        reservedLength = sectionLength - 14
+        reservedLength = section_length - 14
         for item in range(szlCount):
             if offset + 14 + reservedLength -1 >= totalLength:
                 break
@@ -555,11 +568,19 @@ class Client:
                     mkbusRate=mkbusBPS
                 )
             )
-            offset += sectionLength
+            offset += section_length
         return result
 
 
     def stop_plc(self) -> bool:
+        """
+        Stop PLC
+
+        Returns:
+            status(bool): command result
+                            True (success)
+                            False (not executed)
+        """
         cpuStatus = self.read_cpu_status()
 
         if cpuStatus.requestedMode != "Stop":
@@ -569,13 +590,21 @@ class Client:
 
             length = struct.unpack_from(f'{self.endian}H', data, 2)[0]
             if (length > 19): # the minimum expected
-                headerErrorClass, headerErrorCode, function = struct.unpack_from('BBB', data, 17)
-                if headerErrorClass != const.ErrorClass.NO_ERROR or headerErrorCode != 0:
+                header_error_class, header_error_code, function = struct.unpack_from('BBB', data, 17)
+                if header_error_class != const.ErrorClass.NO_ERROR or header_error_code != 0:
                     return False
         return True
 
 
     def start_plc_cold(self) -> bool:
+        """
+        Start PLC cold (reset memory)
+
+        Returns:
+            status(bool): command result
+                            True (success)
+                            False (not executed)
+        """
         cpuStatus = self.read_cpu_status()
 
         if cpuStatus.requestedMode != "Run":
@@ -586,13 +615,22 @@ class Client:
 
             length = struct.unpack_from(f'{self.endian}H', data, 2)[0]
             if (length > 18): # the minimum expected
-                headerErrorClass, headerErrorCode = struct.unpack_from(f'BB', data, 17)
-                if headerErrorClass != const.ErrorClass.NO_ERROR or headerErrorCode != 0:
+                header_error_class, header_error_code = struct.unpack_from(f'BB', data, 17)
+                if header_error_class != const.ErrorClass.NO_ERROR or header_error_code != 0:
                     return False
         return True
 
 
     def start_plc_hot(self) -> bool:
+        """
+        Start PLC hot (resume)
+
+        Returns:
+            status(bool): command result
+                            True (success)
+                            False (not executed)
+        """
+
         cpuStatus = self.read_cpu_status()
 
         if cpuStatus.requestedMode != "Run":
@@ -603,13 +641,23 @@ class Client:
 
             length = struct.unpack_from(f'{self.endian}H', data, 2)[0]
             if (length > 18): # the minimum expected
-                headerErrorClass, headerErrorCode = struct.unpack_from('BB', data, 17)
-                if headerErrorClass != const.ErrorClass.NO_ERROR or headerErrorCode != 0:
+                header_error_class, header_error_code = struct.unpack_from('BB', data, 17)
+                if header_error_class != const.ErrorClass.NO_ERROR or header_error_code != 0:
                     return False
         return True
 
 
     def read_szl(self, id:int, index:int=0x0000) -> bytes:
+        """
+        Read CPU LEDs
+        
+        Args:
+            id(int):  System status list (SZL) ID (e.g. 0x0232)
+            index(int): index of SZL
+                            0x0000 (default)
+        Returns:
+            result(list): list of CPU LEDs status
+        """
 
         request = bytearray(const.S7_SZL_FIRST)
         struct.pack_into(f'{self.endian}HH', request, 29, id, index)
@@ -622,12 +670,12 @@ class Client:
             (
                 pduRef, 
                 lastDataUnit,
-                paramErrorCode, 
-                dataReturnCode, 
-                transportSize, 
+                param_error_code, 
+                data_return_code, 
+                transport_size, 
                 length
             ) = struct.unpack_from(f'{self.endian}BBHBBH', data, 25)
-            fragmentedData = data[33:]
+            fragmented_data = data[33:]
             # use lastDataUnit to iterate
             while lastDataUnit != const.LastDataUnit.YES:
                 pduRef += 1
@@ -641,21 +689,27 @@ class Client:
                 (
                     pduRef, 
                     lastDataUnit, 
-                    paramErrorCode, 
-                    dataReturnCode, 
-                    transportSize,
+                    param_error_code, 
+                    data_return_code, 
+                    transport_size,
                     length
                 ) = struct.unpack_from(f'{self.endian}BBHBBH', data, 25)
-                if (paramErrorCode == const.ParamErrorCode.NO_ERROR
-                    and dataReturnCode == const.ReturnCode.SUCCESS 
+                if (param_error_code == const.ParamErrorCode.NO_ERROR
+                    and data_return_code == const.ReturnCode.SUCCESS 
                     and length > 0
                 ):
-                    fragmentedData += data[33:]
-            return fragmentedData
+                    fragmented_data += data[33:]
+            return fragmented_data
         return data
 
 
     def read_protection(self) -> list:
+        """
+        Read CPU Protection levels
+
+        Returns:
+            result(list): list of CPU protection levels
+        """
         result = []
 
         data = self.read_szl(id=const.SystemStateList.PROTECTION, index=0x0004)
@@ -664,7 +718,7 @@ class Client:
         if totalLength < 4:
             return result
         offset = 4
-        sectionLength, szlCount = struct.unpack_from(f'{self.endian}HH', data, offset)
+        section_length, szlCount = struct.unpack_from(f'{self.endian}HH', data, offset)
         offset += 4
         for item in range(szlCount):
             if offset + 12 > totalLength:
@@ -682,15 +736,21 @@ class Client:
                     protectionLevel=sch_schal, 
                     passwordLevel=sch_par, 
                     validProtectionLevel=sch_rel, 
-                    modeSelector=util.GetModeSelector(bart_sch), 
-                    startupSwitch=util.GetStartupSwitchSelector(anl_sch)
+                    modeSelector=util.get_mode_selector(bart_sch), 
+                    startupSwitch=util.get_startup_switch_selector(anl_sch)
                 )
             )
-            offset += sectionLength
+            offset += section_length
         return result
 
 
     def read_cpu_diagnostic(self) -> list:
+        """
+        Read CPU Diagnostics
+
+        Returns:
+            result(list): list of CPU diagnostics
+        """
         result = []
 
         data = self.read_szl(id=const.SystemStateList.CPU_DIAGOSTICS)
@@ -701,7 +761,7 @@ class Client:
 
         # extract data
         offset = 4
-        sectionLength, szlCount = struct.unpack_from(f'{self.endian}HH', data, offset)
+        section_length, szlCount = struct.unpack_from(f'{self.endian}HH', data, offset)
         offset += 4
         for item in range(szlCount):
             if offset + 20 >= totalLength:
@@ -718,21 +778,27 @@ class Client:
             result.append(
                 CPUDiagnostics(
                     eventId=f"0x{eventId.hex()}",
-                    description=util.GetCpuDiagnostic(struct.unpack(f'{self.endian}H', eventId)[0]),
+                    description=util.get_cpu_diagnostic(struct.unpack(f'{self.endian}H', eventId)[0]),
                     priority=priority,
                     obNumber=obNumber,
                     datId=f"0x{datId.hex()}",
                     info1=f"0x{info1.hex()}",
                     info2=f"0x{info2.hex()}",
-                    timestamp=util.GetDateTime(timestamp)
+                    timestamp=util.get_datetime(timestamp)
                 )
             )
-            offset += sectionLength
+            offset += section_length
 
         return result
 
 
     def read_cpu_leds(self) -> list:
+        """
+        Read CPU LEDs
+
+        Returns:
+            result(list): list of CPU LEDs status
+        """
 
         result = []
 
@@ -744,7 +810,7 @@ class Client:
 
         # extract data
         offset = 4
-        sectionLength, szlCount = struct.unpack_from(f'{self.endian}HH', data, offset)
+        section_length, szlCount = struct.unpack_from(f'{self.endian}HH', data, offset)
         offset += 4
         for item in range(szlCount):
             if offset > totalLength:
@@ -758,30 +824,36 @@ class Client:
                 CPULed(
                     rack=(id>>8)&0x07,
                     type=(id>>11)&0x01,
-                    id=util.GetCpuLed(id&0xFF),
+                    id=util.get_cpu_led(id&0xFF),
                     on=bool(status),
                     flashing=bool(flashing)
                 )
             )
-            offset += sectionLength
+            offset += section_length
         return result
 
 
-    def read_block_info(self, BlockType:int, BlockNumber:int) -> list:
+    def read_block_info(self, block_type:int, block_number:int) -> list:
+        """
+        Read block info
 
+        Args:
+            block_type(int):
+            block_number(int):
+        """
         request = bytearray(const.S7_BLOCK_INFO)
 
-        request[30] = BlockType & 0xFF
+        request[30] = block_type & 0xFF
         # Block Number
-        request[31] = ((BlockNumber // 10000) + 0x30) & 0xFF
-        BlockNumber = BlockNumber % 10000
-        request[32] = ((BlockNumber // 1000) + 0x30) & 0xFF
-        BlockNumber = BlockNumber % 1000
-        request[33] = ((BlockNumber // 100) + 0x30) & 0xFF
-        BlockNumber = BlockNumber % 100
-        request[34] = ((BlockNumber // 10) + 0x30) & 0xFF
-        BlockNumber = BlockNumber % 10
-        request[35] = ((BlockNumber // 1) + 0x30) & 0xFF
+        request[31] = ((block_number // 10000) + 0x30) & 0xFF
+        block_number = block_number % 10000
+        request[32] = ((block_number // 1000) + 0x30) & 0xFF
+        block_number = block_number % 1000
+        request[33] = ((block_number // 100) + 0x30) & 0xFF
+        block_number = block_number % 100
+        request[34] = ((block_number // 10) + 0x30) & 0xFF
+        block_number = block_number % 10
+        request[35] = ((block_number // 1) + 0x30) & 0xFF
 
         self._send(send_data=request)
         data = self._recv()
@@ -790,9 +862,9 @@ class Client:
 
         length = struct.unpack_from(f'{self.endian}H', data, 2)[0]
         if (length > 32): # the minimum expected
-            paramErrorCode, dataReturnCode = struct.unpack_from(f'{self.endian}HB', data, 27)
-            if (paramErrorCode == const.ParamErrorCode.NO_ERROR 
-                and dataReturnCode == const.ReturnCode.SUCCESS
+            param_error_code, data_return_code = struct.unpack_from(f'{self.endian}HB', data, 27)
+            if (param_error_code == const.ParamErrorCode.NO_ERROR 
+                and data_return_code == const.ReturnCode.SUCCESS
             ):
                 # IH IH: timestamps
                 (
@@ -809,7 +881,7 @@ class Client:
                     ssbLength,
                     addLength,
                     localDataLength,
-                    mc7Length,
+                    mc7_length,
                     author,
                     family,
                     name,
@@ -817,20 +889,20 @@ class Client:
                     reserved,
                     checksum
                 ) = struct.unpack_from(f'{self.endian}1s B B H I I IH IH H H H H 8s 8s 8s B B 2s', data, 42)
-                versionHi, versionLo = util.ByteToNibbles(version)
+                versionHi, versionLo = util.byte_to_nibbles(version)
                 blockInfo = BlockInfo(
                     flags=f"0x{flags.hex()}",
-                    language=util.GetBlockLanguage(language),
-                    type=util.GetSubblockType(blockType),
+                    language=util.get_block_language(language),
+                    type=util.get_subblock_type(blockType),
                     number=number,
                     loadMemory=loadMemory,
                     security=security,
-                    codeTimestamp=util.GetTime(Milliseconds=codeMillis, DaysSince=codeDaysSince),
-                    interfaceTimestamp=util.GetTime(Milliseconds=interfaceMillis, DaysSince=interfaceDaysSince),
+                    codeTimestamp=util.get_time(Milliseconds=codeMillis, DaysSince=codeDaysSince),
+                    interfaceTimestamp=util.get_time(Milliseconds=interfaceMillis, DaysSince=interfaceDaysSince),
                     ssbLength=ssbLength,
                     addLength=addLength,
                     localDataLength=localDataLength,
-                    mc7Length=mc7Length,
+                    mc7Length=mc7_length,
                     author=author.decode().rstrip('\x00'),
                     family=family.decode().rstrip('\x00'),
                     name=name.decode().rstrip('\x00'),
@@ -843,106 +915,120 @@ class Client:
                     self.cache_data[blockInfo.type] = {}   
                 self.cache_data[blockInfo.type][blockInfo.number] = blockInfo
             else:
-                self.__log.error(f"self.read_block_info(): {ErrorCode(paramErrorCode)}")
-                raise ErrorCode(paramErrorCode)
+                self.__log.error(f"self.read_block_info(): {ErrorCode(param_error_code)}")
+                raise ErrorCode(param_error_code)
         else:
             self.__log.error(f"self.read_block_info(): Invalid PDU")
             raise CommTypeError("Invalid PDU")
         return result
 
 
-    def read_area(self, Address:str, Elements:int=0, ItemList:list=[]) -> list:
+    def read_area_raw(self, address:str, elements:int) -> list:
+        """
+        Read area and return raw bytes
+
+        Args:
+            address(str): string address to be used for custom read
+            elements(int): size of request in bytes
+        """
+
         result = []
-
         # extract params from address
-        AreaName, Area, Number, Offset = util.GetAreaAddress(id=Address)
+        # extract area type
+        area_type = util.get_all_alpha(address=address)
+        # get numbers 
+        number_type = util.get_all_numeric(address=address)
+        try:
+            area = util.get_area_from_name(Name=area_type[0])
+        except Exception as exception:
+            return Tag(
+                address=address,
+                size=elements,
+                error=str(exception)
+            )
 
-        if Elements < 1:
-            for item in ItemList:
-                length = util.DataSizeByte(item.type)
-                Elements += length
-            if Elements < 1:
-                return result
+        # get DB number
+        db_number = number_type[0]
+        offset = number_type[1]
 
-        if (self.controller < 1500):
+        # target S7300/S7400
+        if (self.controller < 1200):
             try:
-                if self.cache_data.get(AreaName) is None:
-                    self.read_block_info(BlockType=const.BlockType.DB, BlockNumber=Number)
-                elif self.cache_data.get(AreaName).get(Number) is None:
-                    self.read_block_info(BlockType=const.BlockType.DB, BlockNumber=Number)
-                mc7Length = self.cache_data.get(AreaName).get(Number).mc7Length
+                if self.cache_data.get(area_type[0]) is None:
+                    self.read_block_info(block_type=const.BlockType.DB, block_number=db_number)
+                elif self.cache_data.get(area_type[0]).get(db_number) is None:
+                    self.read_block_info(block_type=const.BlockType.DB, block_number=db_number)
+                mc7_length = self.cache_data.get(area_type[0]).get(db_number).mc7Length
             except Exception:
-                mc7Length = Elements
+                mc7_length = elements
                 pass
 
             # Resize elements if bigger than block
-            if Offset + Elements > mc7Length:
-                Elements = mc7Length - Offset
+            if offset + elements > mc7_length:
+                elements = mc7_length - offset
 
         # Some adjustment
-        if (Area == const.Area.COUNTER_S7):
-            TransportSize = const.DataType.COUNTER
-        elif (Area == const.Area.TIMER_S7):
-            TransportSize = const.DataType.TIMER
+        if (area == const.Area.COUNTER_S7):
+            transport_size = const.DataType.COUNTER
+        elif (area == const.Area.TIMER_S7):
+            transport_size = const.DataType.TIMER
         else:
-            TransportSize = const.DataType.BYTE
+            transport_size = const.DataType.BYTE
 
         # Calc Word size          
-        WordSize = util.DataSizeByte(TransportSize)
-        if (WordSize == 0):
+        word_size = util.get_data_size_byte(transport_size)
+        if (word_size == 0):
             self.__log.error(f"self.read_area(): Invalid Data Size")
             raise DataTypeError("Invalid Data Size")
 
-        if (TransportSize == const.DataType.BIT):
-            Elements = 1  # Only 1 bit can be transferred at time
+        if (transport_size == const.DataType.BIT):
+            elements = 1  # Only 1 bit can be transferred at time
         else:
-            if (TransportSize != const.DataType.COUNTER 
-                and TransportSize != const.DataType.TIMER
+            if (transport_size != const.DataType.COUNTER 
+                and transport_size != const.DataType.TIMER
             ):
-                Elements *= WordSize
-                WordSize = 1
-                TransportSize = const.DataType.BYTE
+                elements *= word_size
+                word_size = 1
+                transport_size = const.DataType.BYTE
 
-        MaxElements = (self._pdu_length - 18) // WordSize # 18 = Reply telegram header
-        TotalElements = Elements
-        fragmentedData = bytes()
+        max_elements = (self._pdu_length - 18) // word_size # 18 = Reply telegram header
+        total_elements = elements
+        fragmented_data = bytes()
 
-        while (TotalElements > 0):
-            NumElements = TotalElements
-            if (NumElements > MaxElements):
-                NumElements = MaxElements
-
-            # SizeRequested = NumElements * WordSize
+        while (total_elements > 0):
+            number_of_elements = total_elements
+            if (number_of_elements > max_elements):
+                number_of_elements = max_elements
 
             # Setup the telegram
             # read only uses first 31 bytes
             request = bytearray(const.S7_READ_WRITE[0:31])
             # Set Area
-            struct.pack_into('B', request, 27, Area)
+            struct.pack_into('B', request, 27, area)
             # Set DB Number
-            if (Area == const.Area.DB_DATABLOCKS):
-                struct.pack_into(f'{self.endian}H', request, 25, Number)
+            if (area == const.Area.DB_DATABLOCKS):
+                struct.pack_into(f'{self.endian}H', request, 25, db_number)
 
-            # Adjusts Offset and word length
-            if (TransportSize == const.DataType.BIT 
-                or TransportSize == const.DataType.COUNTER
-                 or TransportSize == const.DataType.TIMER
+            # Adjusts offset and word length
+            if (transport_size == const.DataType.BIT 
+                or transport_size == const.DataType.COUNTER
+                 or transport_size == const.DataType.TIMER
             ):
-                Address = Offset
-                struct.pack_into('B', request, 22, TransportSize)
+                address = offset
+                struct.pack_into('B', request, 22, transport_size)
             else:
-                Address = Offset << 3
+                address = offset << 3
 
             # Num elements
-            struct.pack_into(f'{self.endian}H', request, 23, NumElements)
-            # Address into the PLC
+            struct.pack_into(f'{self.endian}H', request, 23, number_of_elements)
+            # address into the PLC
             struct.pack_into(
                 f'BBB', 
                 request, 
                 28, 
-                (Address >> 16) & 0xFF,
-                (Address >> 8) & 0xFF,
-                (Address >> 0) & 0xFF
+                (address >> 16) & 0xFF,
+                (address >> 8) & 0xFF,
+                (address >> 0) & 0xFF
             )
 
             self._send(send_data=request)
@@ -953,253 +1039,176 @@ class Client:
                 self.__log.error(f"self.read_area(): Invalid PDU size")
                 raise CommTypeError("Invalid PDU size")
             else:
-                headerErrorClass, headerErrorCode, paramFunction, itemCount = struct.unpack_from('BBBB', data, 17)
-                if headerErrorClass != const.ErrorClass.NO_ERROR or headerErrorCode != 0:
+                (
+                    header_error_class, 
+                    header_error_code, 
+                    param_function, 
+                    param_item_count
+                ) = struct.unpack_from('BBBB', data, 17)
+                if header_error_class != const.ErrorClass.NO_ERROR or header_error_code != 0:
                     self.__log.error(f"self.read_area(): Invalid PDU size")
                     raise CommTypeError("Invalid PDU size")
                 else:
-                    for item in range(itemCount):
-                        dataReturnCode, transportSize, length = struct.unpack_from(
+                    for item in range(param_item_count):
+                        data_return_code, transport_size, length = struct.unpack_from(
                             f'{self.endian}BBH', 
                             data,
                             21
                         )
-                        if dataReturnCode == const.ReturnCode.SUCCESS:
-                            fragmentedData += data[25:]
+                        if data_return_code == const.ReturnCode.SUCCESS:
+                            fragmented_data += data[25:]
                         else:
-                            self.__log.error(f"self.read_area(): {ReturnCode(dataReturnCode)}")
-                            raise ReturnCode(dataReturnCode)
-            TotalElements -= NumElements
-            Offset += NumElements * WordSize
-        
-        
+                            self.__log.error(f"self.read_area(): {ReturnCode(data_return_code)}")
+                            raise ReturnCode(data_return_code)
+            total_elements -= number_of_elements
+            offset += number_of_elements * word_size
+
         # return raw bytes
-        if not ItemList:
-            result.append(
-                Tag(
-                    address=Address, 
-                    value=fragmentedData, 
-                    size=len(fragmentedData), 
-                    type=const.DataType.CHAR
-                )
+        result.append(
+            Tag(
+                address=address, 
+                value=fragmented_data, 
+                size=len(fragmented_data), 
+                type=const.DataType.CHAR
             )
-        else:
-            # loop through item list to unpack data
-            offset = 0
-            for item in ItemList:
-                encode = False
-                length = util.DataSizeByte(item.type)
-                if (item.type == const.DataType.BIT
-                    or item.type == const.DataType.BYTE
-                ):
-                    unpackFormat = "B"
-                elif item.type == const.DataType.CHAR:
-                    unpackFormat = "1sB"
-                elif item.type == const.DataType.INT:
-                    unpackFormat = "h"
-                elif item.type == const.DataType.WORD:
-                    unpackFormat = "H"
-                elif item.type == const.DataType.DATE:
-                    unpackFormat = "H" # days since 1990-01-01
-                    encode = True
-                elif item.type == const.DataType.DATETIME:
-                    unpackFormat = "8s"
-                    encode = True
-                elif item.type == const.DataType.S5TIME:
-                    unpackFormat = "2s"
-                    encode = True
-                elif item.type == const.DataType.DINT:
-                    unpackFormat = "i"
-                elif item.type == const.DataType.DWORD:
-                    unpackFormat = "I"
-                elif item.type == const.DataType.REAL:
-                    unpackFormat = "f"
-                elif item.type == const.DataType.TIME:
-                    unpackFormat = "I"
-                elif item.type == const.DataType.TIME_OF_DAY:
-                    unpackFormat = "I"
-                elif item.type == const.DataType.STRING:
-                    unpackFormat = "BB254s"
-                    encode = True
-                # string decode is its own thing
-                if item.type != const.DataType.STRING:
-                    value = struct.unpack_from(f'{self.endian}{unpackFormat}', fragmentedData, offset)[0]
-                if encode:
-                    if item.type == const.DataType.DATE:
-                        value = util.GetDate(DaysSince=value)
-                    elif item.type == const.DataType.DATETIME:
-                        value = util.GetDateTime(Buffer=value)
-                    elif item.type == const.DataType.S5TIME:
-                        value = util.GetS5Time(Buffer=value)
-                    elif item.type == const.DataType.STRING:
-                        (
-                            maxLen, 
-                            strLen, 
-                            string
-                        ) = struct.unpack_from(f'{self.endian}{unpackFormat}', fragmentedData, offset)
-                        value = string[:strLen].decode()
-                item = item._replace(
-                    address=f"{AreaName}{Number}.{offset}",
-                    value=value,
-                    size=length,
-                    type=item.type
-                )
-                result.append(item)
-                offset += length
+        )
 
         return result
 
 
-    def write_area(self, Address:str, ItemList:list=[]):
+    def write_area_raw(self, address:str, raw_bytes:bytes) -> list:
+        """
+        Custom write data area
+
+        Args:
+            address(str): string address to be used for custom read
+            raw_bytes(bytes): raw bytes to be written to controller
+            elements(int): specify how many bytes to write
+        """
+
         # extract params from address
-        AreaName, Area, Number, Offset = util.GetAreaAddress(id=Address)
+        # extract area type
+        area_type = util.get_all_alpha(address=address)
+        # get numbers 
+        number_type = util.get_all_numeric(address=address)
+        try:
+            area = util.get_area_from_name(Name=area_type[0])
+        except Exception as exception:
+            return Tag(
+                address=address,
+                size=elements,
+                error=str(exception)
+            )
+
+        # get DB number
+        number = number_type[0]
+        offset = number_type[1]
 
         # Generate total elements (bytes)
-        dataLength = 0
-        totalPayload = bytes()
-        for item in ItemList:
-            if type(item) != Tag:
-                self.__log.error(f"self.write_area(): Invalid data type")
-                raise DataTypeError("Invalid data type")
-            length = util.DataSizeByte(item.type)
-            if (item.type == const.DataType.BIT
-                or item.type == const.DataType.BYTE
-            ):
-                payload = struct.pack('B', abs(int(item.value)&0xFF))
-            elif item.type == const.DataType.CHAR:
-                payload = struct.pack('1sB', str(item.value).encode(), 0)
-            elif item.type == const.DataType.INT:
-                payload = struct.pack(f'{self.endian}h', int(item.value))
-            elif item.type == const.DataType.WORD:
-                payload = struct.pack(f'{self.endian}H', abs(item.value))
-            elif item.type == const.DataType.DINT:
-                payload = struct.pack(f'{self.endian}i', int(item.value))
-            elif item.type == const.DataType.DWORD:
-                payload = struct.pack(f'{self.endian}I', abs(int(item.value)))
-            elif item.type == const.DataType.REAL:
-                payload = struct.pack(f'{self.endian}f', item.value)
-            elif item.type == const.DataType.STRING:
-                payload = struct.pack(
-                    f'{self.endian}BB254s', 
-                    254, 
-                    len(item.value), 
-                    item.value.encode()
-                )
-            elif item.type == const.DataType.DATE: # days since 1990-01-01
-                payload = struct.pack(f'{self.endian}H', util.SetDate(item.value))
-            elif item.type == const.DataType.TIME:
-                payload = struct.pack(f'{self.endian}I', abs(int(item.value)))
-            elif item.type == const.DataType.DATETIME:
-                payload = struct.pack('8s', util.SetDateTime(item.value))
-            elif item.type == const.DataType.TIME_OF_DAY:
-                payload = struct.pack(f'{self.endian}I', abs(int(item.value)))
-            elif item.type == const.DataType.S5TIME:
-                payload = struct.pack('2s', util.SetS5Time(item.value))
-            # get total payload and its length
-            totalPayload += payload
-            dataLength += length
+        elements = len(raw_bytes)
 
-        mc7Length = Elements
-        if (self.controller < 1500):
+        mc7_length = elements
+        if (self.controller < 1200):
             try:
-                if self.cache_data.get(AreaName) is None:
-                    self.read_block_info(BlockType=const.BlockType.DB, BlockNumber=Number)
-                elif self.cache_data.get(AreaName).get(Number) is None:
-                    self.read_block_info(BlockType=const.BlockType.DB, BlockNumber=Number)
-                mc7Length = self.cache_data.get(AreaName).get(Number).mc7Length
+                if self.cache_data.get(area_type[0]) is None:
+                    self.read_block_info(block_type=const.BlockType.DB, block_number=number)
+                elif self.cache_data.get(area_type[0]).get(number) is None:
+                    self.read_block_info(block_type=const.BlockType.DB, block_number=number)
+                mc7_length = self.cache_data.get(area_type[0]).get(number).mc7Length
             except Exception:
                 pass
 
-        Elements = dataLength
         # Resize elements if bigger than block
-        if Offset + Elements > mc7Length:
-            Elements = mc7Length - Offset
+        if offset + elements > mc7_length:
+            elements = mc7_length - offset
 
         # Some adjustment
-        if (Area == const.Area.COUNTER_S7):
-            dataType = const.DataType.COUNTER
-        elif (Area == const.Area.TIMER_S7):
-            dataType = const.DataType.TIMER
+        if (area == const.Area.COUNTER_S7):
+            data_type = const.DataType.COUNTER
+        elif (area == const.Area.TIMER_S7):
+            data_type = const.DataType.TIMER
         else:
-            dataType = const.DataType.BYTE
+            data_type = const.DataType.BYTE
 
         # Calc Word size          
-        WordSize = util.DataSizeByte(dataType)
-        if (WordSize == 0):
+        word_size = util.get_data_size_byte(data_type)
+        if (word_size == 0):
             self.__log.error(f"self.write_area(): Invalid data size")
             raise DataTypeError("Invalid Data Size")
 
-        if (dataType == const.DataType.BIT):
-            Elements = 1  # Only 1 bit can be transferred at time
+        if (data_type == const.DataType.BIT):
+            elements = 1  # Only 1 bit can be transferred at time
         else:
-            if (dataType != const.DataType.COUNTER 
-                and dataType != const.DataType.TIMER
+            if (data_type != const.DataType.COUNTER 
+                and data_type != const.DataType.TIMER
             ):
-                Elements *= WordSize
-                WordSize = 1
+                elements *= word_size
+                word_size = 1
 
-        MaxElements = (self._pdu_length - 35) // WordSize # 35 = Reply telegram header
-        TotalElements = dataLength # Elements
+        tag = Tag(address=address, size=elements)
 
-        while (TotalElements > 0):
-            NumElements = TotalElements
-            if (NumElements > MaxElements):
-                NumElements = MaxElements
+        max_elements = (self._pdu_length - 35) // word_size # 35 = Reply telegram header
+        total_elements = elements
+        data_offset = 0
+        while (total_elements > 0):
+            number_of_elements = total_elements
+            if (number_of_elements > max_elements):
+                number_of_elements = max_elements
 
-            DataSize = NumElements * WordSize
-            IsoSize = 35 + DataSize
+            data_size = number_of_elements * word_size
+            iso_size = 35 + data_size
 
             # Setup the telegram
             # Write uses all 35 bytes
             request = bytearray(const.S7_READ_WRITE)
             # Set telegram size
-            struct.pack_into(f'{self.endian}H', request, 2, IsoSize)
+            struct.pack_into(f'{self.endian}H', request, 2, iso_size)
             # Data Length
-            Length = DataSize + 4
-            struct.pack_into(f'{self.endian}H', request, 15, Length)
+            data_length = data_size + 4
+            struct.pack_into(f'{self.endian}H', request, 15, data_length)
             # Update function
             request[17] = const.Function.WRITE_VARIABLE
             # Set Area
-            struct.pack_into('B', request, 27, Area)
-            # Set DB Number
-            if (Area == const.Area.DB_DATABLOCKS):
-                struct.pack_into(f'{self.endian}H', request, 25, Number)
+            struct.pack_into('B', request, 27, area)
+            # Set DB number
+            if (area == const.Area.DB_DATABLOCKS):
+                struct.pack_into(f'{self.endian}H', request, 25, number)
 
-            # Adjusts Offset and word length
-            if (dataType == const.DataType.BIT 
-                or dataType == const.DataType.COUNTER
-                 or dataType == const.DataType.TIMER
+            # Adjusts offset and word length
+            if (data_type == const.DataType.BIT 
+                or data_type == const.DataType.COUNTER
+                 or data_type == const.DataType.TIMER
             ):
-                Address = Offset
-                Length = DataSize
-                request[22] = dataType
+                address = offset
+                data_length = data_size
+                request[22] = data_type
             else:
-                Address = Offset << 3
-                Length = DataSize << 3
+                address = offset << 3
+                data_length = data_size << 3
 
             # Num elements
-            struct.pack_into(f'{self.endian}H', request, 23, NumElements)
+            struct.pack_into(f'{self.endian}H', request, 23, number_of_elements)
             # Set address
             struct.pack_into(
                 f'BBB', 
                 request, 
                 28, 
-                (Address >> 16) & 0xFF,
-                (Address >> 8) & 0xFF,
-                (Address >> 0) & 0xFF
+                (address >> 16) & 0xFF,
+                (address >> 8) & 0xFF,
+                (address >> 0) & 0xFF
             )
 
             # Set transport size and data length
-            if (dataType == const.DataType.BIT):
+            if (data_type == const.DataType.BIT):
                 request[32] = const.TransportSize.BIT
-            elif (dataType == const.DataType.COUNTER or dataType == const.DataType.TIMER):
+            elif (data_type == const.DataType.COUNTER or data_type == const.DataType.TIMER):
                 request[32] = const.TransportSize.OCTET_STRING
             else:
                 request[32] = const.TransportSize.BYTE_WORD_DWORD
-            struct.pack_into(f'{self.endian}H', request, 33, Length)
+            struct.pack_into(f'{self.endian}H', request, 33, data_length)
 
             # attach payload to write request
-            request += totalPayload[Offset:Offset+DataSize]
+            request += raw_bytes[data_offset:data_offset+data_size]
 
             self._send(send_data=request)
             try:
@@ -1209,17 +1218,406 @@ class Client:
 
             length = struct.unpack_from(f'{self.endian}H', data, 2)[0]
             if (length == 22):
-                headerErrorClass, headerErrorCode = struct.unpack_from('BB', data, 17)
-                dataReturnCode = struct.unpack_from('B', data, 21)
-                if (headerErrorClass != const.ErrorClass.NO_ERROR
-                    and headerErrorCode != 0x00
-                    and dataReturnCode != const.ReturnCode.SUCCESS
+                header_error_class, header_error_code = struct.unpack_from('BB', data, 17)
+                data_return_code = struct.unpack_from('B', data, 21)
+                if (header_error_class != const.ErrorClass.NO_ERROR
+                    and header_error_code != 0x00
+                    and data_return_code != const.ReturnCode.SUCCESS
                 ):
-                    self.__log.error(f"self.write_area(): {ErrorClass(headerErrorClass)}")
-                    raise ErrorClass(headerErrorClass)
+                    self.__log.error(f"self.write_area(): {ErrorClass(header_error_class)}")
+                    tag = tag._replace(error=ErrorClass(header_error_class))
+                    # raise ErrorClass(header_error_class)
             else:
                 self.__log.error(f"self.write_area(): Invalid PDU size")
-                raise CommTypeError("Invalid PDU size")
+                tag = tag._replace(error="Invalid PDU size")
+                # raise CommTypeError("Invalid PDU size")
 
-            TotalElements -= NumElements
-            Offset += NumElements * WordSize
+            total_elements -= number_of_elements
+            offset += number_of_elements * word_size
+            data_offset += number_of_elements * word_size
+
+        return [tag]
+
+
+    def read_area(self, item_list:list=[]) -> list:
+        """
+        Read data area
+
+        Args:
+            item_list(list): list of items to be requested
+        Returns:
+            result(list): same list of items as input but with values       
+        """
+
+        # result = []
+        request = bytearray(const.S7_READ_WRITE[0:19]) # up to item count
+
+        item_size = 12 # bytes
+        item_count = 0
+        total_pdu = 0
+        previous_index = 0
+
+        total_items = len(item_list)
+        result = [Tag()] * total_items
+        total_items_index = 0
+        while total_items_index < total_items:
+            try:
+                # extract item
+                item = item_list[total_items_index]
+                result[total_items_index] = item
+                # extract area type
+                skip = False
+                area_type = util.get_all_alpha(address=item.address)
+                try:
+                    area = util.get_area_from_name(Name=area_type[0])
+                except Exception as exception:
+                    item = item._replace(error=str(exception))
+                    skip = True
+
+                # string is its own BS
+                if item.type == const.DataType.STRING and not skip:
+                    # read first half to determine if more reading is needed
+                    response = self.read_area_raw(address=item.address, elements=128)
+                    # parse buffer
+                    (
+                        max_length, 
+                        string_length, 
+                        string_value
+                    ) = struct.unpack("BB126s", response[0].value)
+                    if string_length > 126:
+                        area = util.get_all_alpha(address=item.address)
+                        number = util.get_all_numeric(address=item.address)
+                        remaining_elements = string_length - 126
+                        # new offset is orignal offset + remaining + first 2 string bytes
+                        index_offset = number[1] + remaining_elements
+                        address_offset = f'{area[0]}{number[0]}.{area[1]}{index_offset}.{number[2]}'
+                        response = self.read_area_raw(address=address_offset, elements=remaining_elements)
+                        string_value += response[0].value
+                    item = item._replace(
+                        value=string_value[:string_length].decode(), 
+                        size=string_length
+                    )
+                    skip = True
+
+                if skip:
+                    result[total_items_index] = item
+                    total_items_index += 1
+                    continue
+
+                total_items_index += 1
+                # get item length
+                item_length = util.get_data_size_byte(item.type)
+                # batch read
+                item_count += 1
+                total_pdu = 2 + (item_count * item_size)
+                if total_pdu + 2 < self._pdu_length:
+                    # extract area type
+                    # get numbers 
+                    number_type = util.get_all_numeric(address=item.address)
+                    # get DB number
+                    db_number = number_type[0]
+                    # get transport size
+                    if (area == const.Area.COUNTER_S7):
+                        transport_size = const.DataType.COUNTER
+                    elif (area == const.Area.TIMER_S7):
+                        transport_size = const.DataType.TIMER
+                    else:
+                        transport_size = item.type
+                        if transport_size != const.DataType.BIT:
+                            transport_size = const.DataType.BYTE
+
+                    # calculate address
+                    # byte address + bit address
+                    address = (number_type[1] << 3) + number_type[2]
+                    address_bytes = struct.pack(
+                        'BBB',
+                        (address >> 16) & 0xFF,
+                        (address >> 8) & 0xFF,
+                        (address >> 0) & 0xFF
+                    )
+                    item_info = struct.pack(
+                        f'{self.endian}BBBBHHB', 
+                        0x12, # variable specifications
+                        0x0A, # length of address specification
+                        0x10, # syntax id: S7ANY
+                        transport_size, 
+                        item_length,
+                        db_number,
+                        area
+                    )
+                    request += (item_info + address_bytes)
+                # see if max PDU length has been exceed or that end of items list
+                if total_pdu + item_size >= self._pdu_length or total_items_index >= total_items:
+                    request[18] = item_count
+                    # param length = (param_function + param_item_count) + items*12
+                    header_param_length = total_pdu
+                    struct.pack_into(f'{self.endian}H', request, 13, header_param_length)
+                    tpkt_length = 17 + header_param_length
+                    struct.pack_into(f'{self.endian}H', request, 2, tpkt_length)
+                    # send request
+                    self._send(send_data=request)
+                    # reset param afer sending
+                    total_pdu = 0
+                    item_count = 0
+                    request = bytearray(const.S7_READ_WRITE[0:19]) # up to item count
+                    data = self._recv()
+                    # parse up to this message
+                    tpkt_length = struct.unpack_from(f'{self.endian}H', data, 2)[0]
+                    if (tpkt_length < 25):
+                        self.__log.error(f"self.read_area(): Invalid PDU size")
+                        raise CommTypeError("Invalid PDU size")
+                    else:
+                        (
+                            header_error_class, 
+                            header_error_code, 
+                            param_function, 
+                            param_item_count
+                        ) = struct.unpack_from('BBBB', data, 17)
+                        if header_error_class != const.ErrorClass.NO_ERROR or header_error_code != 0:
+                            self.__log.error(f"self.read_area(): Invalid PDU size")
+                            raise CommTypeError("Invalid PDU size")
+                        else:
+                            # match item from main loop
+                            item_offset = 21 # index 0
+                            data_offset = item_offset + 4
+                            for parse_index in range(previous_index, total_items_index):
+                                # string has been handled, so skip
+                                if (
+                                    item_list[parse_index].type != const.DataType.STRING
+                                    and result[parse_index].error == ''
+                                ):
+                                    (
+                                        data_return_code, 
+                                        data_transport_size, 
+                                        data_item_length
+                                    ) = struct.unpack_from(
+                                        f'{self.endian}BBH', 
+                                        data,
+                                        item_offset
+                                    )
+                                    if (
+                                        item_list[parse_index].type != const.DataType.BIT
+                                        and item_list[parse_index].type != const.DataType.COUNTER
+                                        and item_list[parse_index].type != const.DataType.TIMER
+                                    ):
+                                        data_item_length = data_item_length >> 3
+                                    value = util.decode(
+                                        data=data, 
+                                        item_type=item_list[parse_index].type,
+                                        offset=data_offset,
+                                        endian=self.endian
+                                    )
+                                    item_offset += (4 + data_item_length)
+                                    # padding for odd bytes
+                                    if bool(data_item_length & 1):
+                                        item_offset += 1
+                                    data_offset = item_offset + 4
+                                    result[parse_index] = result[parse_index]._replace(
+                                        value=value, 
+                                        size=data_item_length
+                                    )
+                                    if data_return_code != const.ReturnCode.SUCCESS:
+                                        result[parse_index] = result[parse_index]._replace(
+                                            error=str(ReturnCode(data_return_code))
+                                        )
+                    previous_index = total_items_index
+            except Exception as exception:
+                item = item._replace(error=str(exception))
+                result[total_items_index] = item
+
+        return result
+
+
+    def write_area(self, item_list:list=[]) -> list:
+        """
+        Write data area
+
+        Args:
+            item_list(list): list of items to be requested
+        Returns:
+            result(list): same list of items as input but with values       
+        """
+
+        request = bytearray(const.S7_READ_WRITE[0:19]) # up to item count
+        data_payload = bytearray()
+        item_count = 0
+        total_pdu = 0
+        previous_index = 0
+
+        total_items = len(item_list)
+        result = [Tag()] * total_items 
+        total_items_index = 0
+        while total_items_index < total_items:
+            try:
+                # extract item
+                item = item_list[total_items_index]
+                item = item._replace(error="Not Sent")
+                result[total_items_index] = item
+                # extract area type
+                skip = False
+                area_type = util.get_all_alpha(address=item.address)
+                try:
+                    area = util.get_area_from_name(Name=area_type[0])
+                except Exception as exception:
+                    item = item._replace(error=str(exception))
+                    skip = True
+
+                if item.value is None:
+                    item = item._replace(error="Missing Value")
+                    skip = True
+
+                # string is its own BS
+                if item.type == const.DataType.STRING and not skip:
+                    string_length = len(item.value)
+                    string_value = item.value
+                    if string_length > 254:
+                        string_length = 254
+                        string_value = string_value[:string_length]
+                    item = item._replace(value=string_value, size=string_length)
+                    response = self.write_area_raw(
+                        address=item.address, 
+                        raw_bytes=util.encode(item=item, endian=self.endian)
+                    )
+                    item = item._replace(error=response[0].error)
+                    skip = True
+
+                if skip:
+                    result[total_items_index] = item
+                    total_items_index += 1
+                    continue
+
+                # get item length
+                data_item_length = util.get_data_size_byte(item.type)
+
+                if total_items_index < total_items:
+                    next_item_size = util.calculate_write_item_size(item_list[total_items_index])
+                else:
+                    next_item_size = util.calculate_write_item_size(item_list[total_items_index-1])
+
+                # message must not exceed total PDU length
+                send = True
+                # frame_header (up to item count) + current_pdu + next_item
+                if 19 + total_pdu + next_item_size < self._pdu_length:
+                    send = False
+                    total_pdu += util.calculate_write_item_size(item)
+                    total_items_index += 1
+                    item_count += 1
+                    # get numbers 
+                    number_type = util.get_all_numeric(address=item.address)
+                    # get transport size
+                    if (area == const.Area.COUNTER_S7):
+                        transport_size = const.DataType.COUNTER
+                    elif (area == const.Area.TIMER_S7):
+                        transport_size = const.DataType.TIMER
+                    else:
+                        transport_size = item.type
+                        if transport_size != const.DataType.BIT:
+                            transport_size = const.DataType.BYTE
+
+                    # get DB number
+                    db_number = number_type[0]
+                    # calculate address
+                    # byte address + bit address
+                    address = (number_type[1] << 3) + number_type[2]
+                    address_bytes = struct.pack(
+                        'BBB',
+                        (address >> 16) & 0xFF,
+                        (address >> 8) & 0xFF,
+                        (address >> 0) & 0xFF
+                    )
+                    item_info = struct.pack(
+                        f'{self.endian}BBBBHHB', 
+                        0x12, # variable specifications
+                        0x0A, # length of address specification
+                        0x10, # syntax id: S7ANY
+                        transport_size, 
+                        data_item_length,
+                        db_number,
+                        area
+                    )
+                    request += (item_info + address_bytes)
+                    # set data transport size
+                    # Set transport size and data length
+                    if (transport_size == const.DataType.BIT):
+                        transport_size = const.TransportSize.BIT
+                        corrected_data_item_length = data_item_length
+                    elif (transport_size == const.DataType.COUNTER or transport_size == const.DataType.TIMER):
+                        transport_size = const.TransportSize.OCTET_STRING
+                        corrected_data_item_length = data_item_length + 1
+                    else:
+                        transport_size = const.TransportSize.BYTE_WORD_DWORD
+                        corrected_data_item_length = data_item_length << 3
+                    data_payload += (
+                        struct.pack(
+                            f'{self.endian}BBH', 
+                            const.ReturnCode.RESERVED,
+                            transport_size,
+                            corrected_data_item_length
+                        ) + util.encode(item=item, endian=self.endian)
+                    )
+
+                # see if max PDU length has been exceed or that end of items list
+                if send or total_items_index >= total_items:
+                    # update parameter
+                    request[17] = const.Function.WRITE_VARIABLE
+                    request[18] = item_count
+                    # append data
+                    request += data_payload
+                    header_param_length = 2 + (item_count * 12)
+                    struct.pack_into(f'{self.endian}H', request, 13, header_param_length)
+                    header_data_length = len(data_payload)
+                    struct.pack_into(f'{self.endian}H', request, 15, header_data_length)
+                    tpkt_length = 17 + header_param_length + header_data_length
+                    struct.pack_into(f'{self.endian}H', request, 2, tpkt_length)
+                    # send request
+                    self._send(send_data=request)
+                    # reset param afer sending
+                    total_pdu = 0
+                    item_count = 0
+                    request = bytearray(const.S7_READ_WRITE[0:19]) # up to item count
+                    data_payload = bytearray()
+                    data = self._recv()
+                    # parse up to this message
+                    tpkt_length = struct.unpack_from(f'{self.endian}H', data, 2)[0]
+                    # minimum is 1 response
+                    if (tpkt_length < 22):
+                        self.__log.error(f"self.write_area(): Invalid PDU size")
+                        raise CommTypeError("Invalid PDU size")
+                    else:
+                        (
+                            header_error_class, 
+                            header_error_code, 
+                            param_function, 
+                            param_item_count
+                        ) = struct.unpack_from('BBBB', data, 17)
+                        if header_error_class != const.ErrorClass.NO_ERROR or header_error_code != 0:
+                            self.__log.error(f"self.write_area(): Invalid PDU size")
+                            raise CommTypeError("Invalid PDU size")
+                        else:
+                            # match item from main loop
+                            data_offset = 21 # index 0
+                            for parse_index in range(previous_index, total_items_index):
+                                # string has been handled, so skip
+                                if (
+                                    item_list[parse_index].type != const.DataType.STRING 
+                                    and item_list[parse_index].value != None
+                                    and result[parse_index].error == ''
+                                ):
+                                    data_return_code = struct.unpack_from(
+                                        'B', 
+                                        data,
+                                        data_offset
+                                    )[0]
+                                    if data_return_code != const.ReturnCode.SUCCESS:
+                                        result[parse_index] = result[parse_index]._replace(
+                                            error=str(ReturnCode(data_return_code))
+                                        )
+                                    else:
+                                        result[parse_index] = result[parse_index]._replace(error='')
+                                    data_offset += 1
+                    previous_index = total_items_index
+            except Exception as exception:
+                item = item._replace(error=str(exception))
+                result[total_items_index] = item
+
+        return result
