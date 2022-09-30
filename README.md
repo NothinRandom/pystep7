@@ -37,10 +37,10 @@ __RTAGS1 = [
     Tag(name="BOOL4", address="DB2.DBX0.4", type=DataType.BIT),
     Tag(name="FLAG5", address="M0.4", type=DataType.BIT),
     Tag(name="INPUT3", address="I0.2", type=DataType.BIT),
-    Tag(name="COUNTER0", address="C0", type=DataType.COUNTER),      # S7-200
-    Tag(name="TIMER0", address="T0", type=DataType.TIMER),          # S7-200
-    Tag(name="IEC_COUNTER0", address="T0", type=DataType.TIMER),    # S7-300+
-    Tag(name="IEC_TIMER0", address="T0", type=DataType.TIMER),      # S7-300+
+    Tag(name="COUNTER0", address="C0", type=DataType.COUNTER),  # S7-200
+    Tag(name="TIMER0", address="T0", type=DataType.TIMER),      # S7-200
+    Tag(name="IEC_COUNTER0", address="T0", type=DataType.IECCOUNTER),   # S7-300+
+    Tag(name="IEC_TIMER0", address="T0", type=DataType.IECTIMER),       # S7-300+
 ]
 
 __WTAGS2 = [
@@ -107,7 +107,7 @@ __WTAGS2 = [
             CV=1000,
             C_DU_O=False
         )
-        type=DataType.IecCounter
+        type=DataType.IECCOUNTER
     ),  # S7-300+
     Tag(
         name="IEC_TIMER", 
@@ -515,7 +515,7 @@ with Client(host=__HOST, port=__PORT, rack=__RACK, slot=__SLOT) as plc:
                     Tag(name='DINT', address='DB2.DBX4.0', value=1, size=4, type=7, error=''), 
                     Tag(name='DWORD', address='DB2.DBX8.0', value=1, size=4, type=6, error=''), 
                     ... 
-                    Tag(name='WORD', address='DB2.DBX500.0', value=1, size=2, type=4, error='Invalid Address')
+                    Tag(name='WORD', address='DB2.DBX500.0', value=1, size=2, type=4, error='Invalid address')
                 ]
 
     """

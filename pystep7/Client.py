@@ -1395,27 +1395,28 @@ class Client:
                                         data,
                                         item_offset
                                     )
-                                    if (
-                                        item_list[parse_index].type != const.DataType.BIT
-                                        and item_list[parse_index].type != const.DataType.COUNTER
-                                        and item_list[parse_index].type != const.DataType.TIMER
-                                    ):
-                                        data_item_length = data_item_length >> 3
-                                    value = util.decode(
-                                        data=data, 
-                                        item_type=item_list[parse_index].type,
-                                        offset=data_offset,
-                                        endian=self.endian
-                                    )
-                                    item_offset += (4 + data_item_length)
-                                    # padding for odd bytes
-                                    if bool(data_item_length & 1):
-                                        item_offset += 1
-                                    data_offset = item_offset + 4
-                                    result[parse_index] = result[parse_index]._replace(
-                                        value=value, 
-                                        size=data_item_length
-                                    )
+                                    if data_item_length > 0:
+                                        if (
+                                            item_list[parse_index].type != const.DataType.BIT
+                                            and item_list[parse_index].type != const.DataType.COUNTER
+                                            and item_list[parse_index].type != const.DataType.TIMER
+                                        ):
+                                            data_item_length = data_item_length >> 3
+                                        value = util.decode(
+                                            data=data, 
+                                            item_type=item_list[parse_index].type,
+                                            offset=data_offset,
+                                            endian=self.endian
+                                        )
+                                        item_offset += (4 + data_item_length)
+                                        # padding for odd bytes
+                                        if bool(data_item_length & 1):
+                                            item_offset += 1
+                                        data_offset = item_offset + 4
+                                        result[parse_index] = result[parse_index]._replace(
+                                            value=value, 
+                                            size=data_item_length
+                                        )
                                     if data_return_code != const.ReturnCode.SUCCESS:
                                         result[parse_index] = result[parse_index]._replace(
                                             error=str(ReturnCode(data_return_code))

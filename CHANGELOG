@@ -1,3 +1,6 @@
+v0.2.1:
+* handle invalid address calls
+
 v0.2.0:
 * big refactor {read,write}_area to match controller syntax
 * add iec_{counter,timer}
